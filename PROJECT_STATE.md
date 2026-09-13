@@ -5,9 +5,11 @@ Last updated: 2026-09-13
 > This is the project root for the **tracker app** itself — distinct from
 > `tcm-daily-tracker` (the Claude Skill that does the TCM analysis, repo
 > `charlotte-wtl/tcm_daily_tracker_skill`) and from `personal_tcm_daily_log`
-> (the private data repo). See "Open architecture question" at the bottom —
-> the app's actual code currently still lives inside the skill repo and
-> hasn't been physically moved here yet, pending your decision.
+> (the private daily-log data repo, `charlotte-wtl/personal_tcm_daily_log`).
+> This repo is `charlotte-wtl/tcmtracker_v1`. `app/daily-log.html` here is
+> the live source for the published Artifact — publish updates from this
+> path (same Artifact URL: `https://claude.ai/code/artifact/161c8d2f-9838-48f0-a068-c46d6f9e52b2`).
+> See "Sprint 2+ tech-stack decision" near the bottom — still open.
 
 ## What this is
 
@@ -139,16 +141,48 @@ and follow-up conversation happen inside the app itself.
   building given this is single-user data (originally scoped assuming
   multi-user testing volume that doesn't apply here).
 
-## Open architecture question (needs your call)
+## Repo layout (resolved 2026-09-13)
 
-This directory currently holds only planning docs. The actual app code
-(`daily-log.html`) and its design-reference docs (`backlog.md`,
-`questions-v2-bilingual.md`, Clue screenshots, etc.) still physically live
-inside the **skill repo** at `/Users/charlotte/tcm/app/` and
-`/Users/charlotte/tcm/docs/` — the same inconsistency we already fixed once
-for personal health data (moved to `personal_tcm_daily_log`). I'd recommend
-moving `app/` and `docs/` here too, into this repo, so the skill repo goes
-back to containing only the skill. Attempting that move triggered a safety
-check (bulk-moving the live Artifact's source file), so I stopped rather
-than force it — say the word and I'll do the move + re-verify the Artifact
-still publishes correctly afterward.
+- `charlotte-wtl/tcm_daily_tracker_skill` (local: `/Users/charlotte/tcm`) —
+  the Claude Skill only (`SKILL.md`, `references/`, `user-data/` school
+  logs). No longer contains app code or app docs.
+- `charlotte-wtl/tcmtracker_v1` (local: `/Users/charlotte/tcm_tracker_app`,
+  **this repo**) — the tracker app itself: `PROJECT_STATE.md`, `app/daily-log.html`
+  (live Artifact source), and `docs/` (backlog, sprint feedback, user-journey
+  draft, design references).
+- `charlotte-wtl/personal_tcm_daily_log` (local: `/Users/charlotte/personal_tcm_daily_log`) —
+  private daily-log health data + skill-analysis transcripts only. Never
+  committed here.
+
+The user keeps filling in `app/daily-log.html` daily (published Artifact:
+`https://claude.ai/code/artifact/161c8d2f-9838-48f0-a068-c46d6f9e52b2`) while
+the Sprint 2+ real-app decision below plays out — the Sprint 1 tool isn't
+paused or replaced yet.
+
+## Sprint 2+ tech-stack decision (open, needs user's call)
+
+User's 2026-09-13 user-journey draft describes a full app (nav bar, native
+feel, local-first + anonymized opt-in research sync) that goes beyond what a
+single-page Claude Artifact can do. Two paths on the table, not yet chosen:
+
+1. **Keep extending the Claude Artifact** — add routing/screens/state to the
+   existing single-file model. Zero extra infra cost, fastest iteration, but
+   no true native chrome/App Store presence, and the `db` capability is tied
+   to the user's Claude account, not a natural fit for the local-first +
+   anonymized-sync privacy model she wants.
+2. **Build a real coded app with its own backend** — native or cross-platform
+   client + a real server/database the user (or Claude, on her behalf)
+   controls. Matches the journey doc's native nav bar and privacy model, but
+   is a materially bigger build: real hosting, a proper local-first data
+   layer, an anonymization strategy for the opt-in research sync, and (for
+   App Store distribution) Apple Developer Program enrollment.
+
+Rough cost shape discussed with the user (ballpark, not a quote): DIY backend
+hosting/DB is roughly free–$25/mo at personal scale, rising with real usage;
+Apple Developer Program is a flat $99/year if a native iOS app ships;
+hiring outside help for a "proper app" build varies enormously (low
+thousands for a bare MVP to tens of thousands+ for a polished multi-feature
+app) and needs a real scoped quote from an actual dev/agency, not a Claude
+estimate. Staying on GitHub-as-durable-storage (already done, this repo +
+`personal_tcm_daily_log`) is a safe bridge regardless of which path is
+chosen — nothing already saved needs to be redone.
