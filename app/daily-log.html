@@ -1,0 +1,975 @@
+<title>每日中醫日記 Daily TCM Log</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+TC:wght@400;500;700;900&display=swap">
+<style>
+  /*
+    Design plan v2 — palette finalized from user's own "Extracted Accent Palette &
+    UX Evaluation" writeup (60% warm cream base / 30% deep pine structure / 10% chartreuse
+    CTA), validated against her Variant.com reference (cream ground, forest-green detail
+    card, pastel mood "buddies", pink micro-accents). Each section gets one accent hue
+    from the secondary set so the app reads as playful/varied, not monochrome — Sleep
+    is lilac per explicit request.
+    Type: Fredoka (EN display) + Noto Sans TC (everything else, both languages).
+    Shapes: organic wave dividers atop each card + 2-shape stacked "buddy" mood icons,
+    replacing plain rectangles/blobs — bold geometric pastel, not a form.
+  */
+  :root{
+    --bg:#F3EFEA; --surface:#FFFFFF; --surface-2:#ECE6DA;
+    --ink:#233831; --ink-soft:#5C6F63; --line:#DCD3C0; --line-strong:#C7BC9F;
+    --accent:#C2B500; --accent-ink:#233831;
+    --pink:#F0AEDD; --periwinkle:#8CA0E0; --gold:#FFBC54;
+    --sage:#85935B; --slate:#7B91A8; --terracotta:#B37146; --lilac:#C6B8EC;
+    --danger:#A3372B;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#182722; --surface:#20342C; --surface-2:#1A2A24;
+      --ink:#F3EFEA; --ink-soft:#AEBDB3; --line:#33473E; --line-strong:#41594E;
+      --accent:#D9CC00; --accent-ink:#182722;
+      --pink:#F0AEDD; --periwinkle:#8CA0E0; --gold:#FFBC54;
+      --sage:#9BAB74; --slate:#93AAC2; --terracotta:#CB8B5F; --lilac:#C6B8EC;
+      --danger:#E2867A;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#182722; --surface:#20342C; --surface-2:#1A2A24;
+    --ink:#F3EFEA; --ink-soft:#AEBDB3; --line:#33473E; --line-strong:#41594E;
+    --accent:#D9CC00; --accent-ink:#182722;
+    --pink:#F0AEDD; --periwinkle:#8CA0E0; --gold:#FFBC54;
+    --sage:#9BAB74; --slate:#93AAC2; --terracotta:#CB8B5F; --lilac:#C6B8EC;
+    --danger:#E2867A;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg); color:var(--ink); font-family:"Noto Sans TC","Noto Sans",-apple-system,system-ui,sans-serif; padding:16px 14px 150px; max-width:640px; margin:0 auto;}
+  .display{font-family:"Fredoka","Noto Sans TC",sans-serif; font-weight:600;}
+  [data-lang="zh"] .display{font-family:"Noto Sans TC",sans-serif; font-weight:900;}
+  h1,h2{text-wrap:balance;}
+
+  .topbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;}
+  .brand{font-size:1.05rem; margin:0;}
+  .langtoggle{display:flex; border:1px solid var(--line-strong); border-radius:999px; overflow:hidden;}
+  .langtoggle button{border:none; background:var(--surface); color:var(--ink-soft); padding:6px 12px; font-size:0.78rem; font-weight:600;}
+  .langtoggle button.on{background:var(--accent); color:var(--accent-ink);}
+
+  /* ticket-stub date card */
+  .ticket{position:relative; background:var(--surface); border:1px solid var(--line); border-radius:16px; margin-bottom:16px; overflow:visible; box-shadow:0 1px 2px rgba(0,0,0,0.04);}
+  .ticket-inner{display:flex; align-items:center; padding:16px 20px; gap:14px;}
+  .ticket-date{font-family:"Fredoka","Noto Sans TC",sans-serif; font-weight:700; font-size:1.6rem; font-variant-numeric:tabular-nums; flex:1;}
+  [data-lang="zh"] .ticket-date{font-family:"Noto Sans TC",sans-serif; font-weight:900;}
+  .ticket-sub{font-size:0.74rem; color:var(--ink-soft); margin-top:2px;}
+  .ticket-progress{font-size:0.74rem; color:var(--ink-soft); text-align:right;}
+  .ticket::before, .ticket::after{content:""; position:absolute; top:50%; width:16px; height:16px; background:var(--bg); border-radius:50%; transform:translateY(-50%); border:1px solid var(--line);}
+  .ticket::before{left:-9px;} .ticket::after{right:-9px;}
+  .ticket-perf{border-top:2px dashed var(--line-strong); margin:0 18px;}
+  .ticket input[type="date"]{position:absolute; inset:0; opacity:0; width:100%; height:100%; cursor:pointer;}
+
+  /* mood row — 2-shape stacked "buddy" characters, tap to log mood */
+  .mood-card{background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:18px 16px 14px; margin-bottom:16px;}
+  .mood-prompt{font-size:1.05rem; font-weight:700; margin:0 0 3px;}
+  .mood-hint{font-size:0.76rem; color:var(--ink-soft); font-style:italic; margin:0 0 14px;}
+  .mood-row{display:flex; gap:8px; justify-content:space-between;}
+  .buddy-wrap{display:flex; flex-direction:column; align-items:center; gap:7px; flex:1; border:none; background:none; padding:4px 0;}
+  .buddy{width:100%; max-width:56px; aspect-ratio:1/1.15; margin:0 auto; display:flex; flex-direction:column; align-items:center; border:2px solid transparent; border-radius:16px; transition:transform .15s;}
+  .buddy-head{width:78%; height:52%; border-radius:50% 50% 20% 20%; display:flex; align-items:center; justify-content:center; gap:6px;}
+  .buddy-body{width:100%; height:44%; border-radius:0 0 46% 46%; margin-top:-6%;}
+  .buddy-eye{width:5px; height:5px; border-radius:50%; background:var(--ink);}
+  .buddy-wrap:nth-child(1) .buddy-head{background:var(--ink-soft);} .buddy-wrap:nth-child(1) .buddy-body{background:var(--slate);}
+  .buddy-wrap:nth-child(2) .buddy-head{background:var(--periwinkle);} .buddy-wrap:nth-child(2) .buddy-body{background:var(--sage);}
+  .buddy-wrap:nth-child(3) .buddy-head{background:var(--gold);} .buddy-wrap:nth-child(3) .buddy-body{background:var(--terracotta);}
+  .buddy-wrap:nth-child(4) .buddy-head{background:var(--pink);} .buddy-wrap:nth-child(4) .buddy-body{background:var(--lilac);}
+  .buddy-wrap:nth-child(5) .buddy-head{background:var(--accent);} .buddy-wrap:nth-child(5) .buddy-body{background:var(--sage);}
+  .buddy-wrap[aria-pressed="true"] .buddy{border-color:var(--ink); transform:translateY(-3px) scale(1.08);}
+  .buddy-label{font-size:0.68rem; color:var(--ink-soft); text-align:center;}
+
+  .progress{font-size:0.78rem; color:var(--ink-soft); margin:0 0 10px;}
+
+  /* organic wave divider atop each section, tinted per section's assigned accent */
+  section.sec{border:1px solid var(--line); border-radius:20px; margin-bottom:14px; overflow:hidden; scroll-margin-top:14px;}
+  section.sec.enter{animation:slideUp .32s ease-out;}
+  @keyframes slideUp{ from{ opacity:0; transform:translateY(18px);} to{ opacity:1; transform:translateY(0);} }
+  @media (prefers-reduced-motion: reduce){ section.sec.enter{animation:none;} }
+  .sec-wave{display:block; width:100%; height:22px; margin-bottom:-1px;}
+  .sec-header{display:flex; justify-content:space-between; align-items:center; padding:12px 18px 14px; cursor:pointer; background:var(--surface-2);}
+  .sec-header h2{font-size:0.98rem; margin:0; font-weight:700;}
+  .sec-header .tag{font-size:0.72rem; color:var(--ink-soft);}
+  .sec-body{padding:16px 18px; background:var(--surface);}
+  .field{margin-bottom:18px;}
+  .field:last-child{margin-bottom:0;}
+  .field label.q{display:block; font-size:0.86rem; font-weight:700; margin-bottom:8px;}
+  .opts{display:flex; flex-wrap:wrap; gap:7px;}
+  .opt{border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:10px; padding:7px 12px; font-size:0.82rem; cursor:pointer;}
+  .opt.on{background:var(--accent); color:var(--accent-ink); border-color:var(--accent); font-weight:600;}
+  button:focus-visible, input:focus-visible, textarea:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  input[type="number"]{font-variant-numeric:tabular-nums;}
+  .scale{display:flex; gap:6px;}
+  .scale .opt{flex:1; text-align:center;}
+  textarea, input[type="text"], input[type="number"]{width:100%; font:inherit; padding:9px 11px; border:1px solid var(--line-strong); border-radius:10px; background:var(--surface); color:var(--ink);}
+  textarea{min-height:60px; resize:vertical;}
+  .other-input{margin-top:7px; font-size:0.82rem; padding:7px 10px;}
+  .slider-wrap{padding:4px 2px;}
+  .slider-wrap input[type="range"]{width:100%; accent-color:var(--accent);}
+  .slider-labels{display:flex; justify-content:space-between; font-size:0.74rem; color:var(--ink-soft); margin-top:4px;}
+  .slider-labels .slider-val{font-weight:700; color:var(--ink); font-size:0.9rem;}
+  .detail{margin-top:9px; padding-top:9px; border-top:1px dashed var(--line);}
+  .detail .q{font-size:0.78rem; color:var(--ink-soft); margin-bottom:5px; font-weight:600;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  @media (max-width:480px){.row2{grid-template-columns:1fr;}}
+  .btnrow{display:flex; gap:8px; padding:12px 18px 16px;}
+  button{font:inherit; cursor:pointer;}
+  .btn{border:1px solid var(--line-strong); background:var(--surface); color:var(--ink); border-radius:10px; padding:9px 16px; font-size:0.85rem; font-weight:600;}
+  .btn.primary{background:var(--ink); color:var(--bg); border-color:var(--ink);}
+  .btn.accent{background:var(--accent); color:var(--accent-ink); border-color:var(--accent);}
+  .btn.ghost{border-color:transparent; color:var(--ink-soft); background:none;}
+  .dock{position:fixed; left:0; right:0; bottom:0; background:linear-gradient(to top, var(--bg) 60%, transparent); padding:16px 14px 14px; display:flex; justify-content:center;}
+  .dock .inner{max-width:640px; width:100%; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:10px 12px; display:flex; gap:8px; align-items:center; box-shadow:0 4px 16px rgba(0,0,0,0.08);}
+  .dock .spacer{flex:1;}
+  .status{font-size:0.74rem; color:var(--ink-soft);}
+  .banner{font-size:0.78rem; background:var(--surface-2); border:1px solid var(--line); border-radius:10px; padding:9px 13px; margin-bottom:12px; display:none;}
+  .banner.show{display:block;}
+  .modal-backdrop{position:fixed; inset:0; background:rgba(30,25,5,0.45); z-index:30; display:flex; align-items:flex-end; justify-content:center;}
+  .modal{background:var(--bg); border-radius:18px 18px 0 0; padding:18px; width:100%; max-width:640px; max-height:80vh; overflow-y:auto;}
+  .modal h2{font-size:1rem; margin:0 0 10px;}
+  .modal textarea{min-height:260px; font-size:0.78rem; font-family:ui-monospace,monospace;}
+  .modal .btnrow{padding:10px 0 0;}
+</style>
+
+<div class="topbar">
+  <p class="brand display" id="brandText"></p>
+  <div class="langtoggle" id="langToggle">
+    <button type="button" data-lang="zh">中文</button>
+    <button type="button" data-lang="en">EN</button>
+  </div>
+</div>
+
+<div id="storageBanner" class="banner"></div>
+
+<div class="ticket">
+  <div class="ticket-inner">
+    <div>
+      <div class="ticket-date" id="ticketDate"></div>
+      <div class="ticket-sub" id="ticketSub"></div>
+    </div>
+  </div>
+  <div class="ticket-perf"></div>
+  <div class="ticket-inner">
+    <div class="ticket-progress" id="progressText" style="flex:1; text-align:left;"></div>
+  </div>
+  <input type="date" id="dateInput">
+</div>
+
+<div class="mood-card">
+  <p class="mood-prompt" id="moodPrompt"></p>
+  <p class="mood-hint" id="moodHint"></p>
+  <div class="mood-row" id="moodBlobs"></div>
+</div>
+
+<div id="cycleField"></div>
+
+<div id="sections"></div>
+
+<div class="dock">
+  <div class="inner">
+    <button class="btn ghost" id="resetBtn"></button>
+    <div class="spacer"></div>
+    <span class="status" id="statusText"></span>
+    <button class="btn" id="laterBtn"></button>
+    <button class="btn accent" id="analyzeBtn" disabled></button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------- i18n helper ---------------- */
+/* Every bilingual string in this file is authored as "zh||en". T() picks the active half. */
+function T(pair){
+  if(pair===undefined || pair===null) return "";
+  const parts = String(pair).split("||");
+  return state.lang === "zh" ? (parts[0]||"") : (parts[1]!==undefined ? parts[1] : parts[0]);
+}
+
+/* ---------------- Schema ---------------- */
+
+const YESNO = ["有||Yes","無||No"];
+const SEV3 = ["輕||Mild","中||Moderate","重||Severe"];
+const SEV4 = ["輕度||Mild","中度||Moderate","明顯||Noticeable","超級腫||Very heavy"];
+
+const SCHEMA = {
+  sleep: {
+    title: "1. 睡眠||1. Sleep",
+    fields: [
+      { id:"onsetEase", type:"single", label:"入睡難易度||Sleep onset ease",
+        options:["很快入睡（15分鐘內）||Fell asleep quickly (<15 min)","稍有困難（15–30分）||Somewhat difficult (15–30 min)","輾轉難眠（超過30分）||Tossed and turned (30+ min)","幾乎整夜難眠||Almost no sleep"] },
+      { id:"sleepTime", type:"text", label:"入睡時間||Sleep time" },
+      { id:"wakeTime", type:"text", label:"起床時間||Wake time" },
+      { id:"depth", type:"single", label:"睡眠深淺||Sleep depth",
+        options:["深沉安穩||Deep & stable","淺眠易醒||Light, easily woken","多夢紛擾||Restless, many dreams","似睡非睡||Barely asleep","被外界環境吵醒||Woken by external environment"] },
+      { id:"nightWaking", type:"multi", label:"半夜醒轉時辰||Middle-of-night waking",
+        options:["無醒轉||None","子時23–1點||Zi 11pm–1am","丑時1–3點||Chou 1–3am","寅時3–5點||Yin 3–5am","卯時5–7點||Mao 5–7am","其他||Other"],
+        detailsTrigger:"any", excludeValues:["無醒轉||None"],
+        details:[{ id:"wakeCount", type:"single", label:"醒轉次數||Number of wakings", options:["1次||1 time","2次||2 times","3次以上||3+ times"] }] },
+      { id:"dreamQuality", type:"single", label:"夢境性質||Dream quality",
+        options:["不記得或無夢||No memory/none","平淡夢境||Mundane","情緒強烈（焦慮/憤怒/悲傷）||Emotionally intense","噩夢||Nightmares","清晰難忘（非負面）||Vivid & memorable (not negative)"] },
+      { id:"sleepQuality", type:"slider", label:"睡眠品質自評||Self-rated sleep quality", min:1, max:5, minLabel:"很差||Poor", maxLabel:"很好||Great" },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  morning: {
+    title: "2. 晨起徵象||2. Morning Signs",
+    fields: [
+      { id:"alertness", type:"single", label:"醒來精神||Waking alertness",
+        options:["清爽有精神||Refreshed","尚可||OK","昏沉遲鈍||Groggy","極度疲憊像沒睡||Exhausted, as if didn't sleep"] },
+      { id:"riseSpeed", type:"single", label:"起床速度||Getting-up speed",
+        options:["一醒即起身||Up immediately","賴床5–10分||Lingered 5–10 min","賴床15分以上||Lingered 15+ min","起身時頭暈||Dizzy on standing"] },
+      { id:"mood", type:"multi", label:"晨起心情||Morning mood",
+        options:["平靜||Calm","煩躁||Irritable","低落||Low","焦慮||Anxious","情緒起伏||Mood swings","失控感||Not in control","還好||Fine","開心||Happy","難過||Sad","敏感||Sensitive","生氣||Angry","自信||Confident","興奮||Excited","不安||Insecure","感恩||Grateful","無感||Indifferent","無力||Lacking energy"] },
+      { id:"energy", type:"single", label:"精力||Energy",
+        options:["精疲力盡||Exhausted","疲倦||Tired","還好||OK","有活力||Energetic","精力充沛||Fully energised"] },
+      { id:"mind", type:"multi", label:"心智狀態||Mind",
+        options:["健忘||Forgetful","腦霧||Brain fog","平靜||Calm","有壓力||Stressed","專注||Focused","分心||Distracted","有動力||Motivated","沒動力||Unmotivated","有創意||Creative","有效率||Productive","沒效率||Unproductive"] },
+      { id:"eyePuffiness", type:"yesno", label:"眼睛浮腫||Eye puffiness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV4 }] },
+      { id:"facePuffiness", type:"yesno", label:"臉部浮腫||Face puffiness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV4 }] },
+      { id:"nosePuffiness", type:"yesno", label:"鼻部浮腫或鼻塞||Nose puffiness/congestion", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV4 }] },
+      { id:"mouthTaste", type:"multi", label:"晨起口感||Morning mouth taste",
+        options:["口淡無異||Normal","口苦||Bitter","口乾||Dry","口黏膩||Sticky","口酸||Sour"] },
+      { id:"throat", type:"multi", label:"喉嚨狀況||Throat condition",
+        options:["正常||Normal","乾燥||Dry","上火（腫痛,異物感）||Inflamed","搔癢||Itchy"] },
+      { id:"coughPhlegm", type:"multi", label:"咳嗽／痰||Cough/Phlegm",
+        options:["無||None","有咳嗽||Cough","有痰||Phlegm"],
+        detailsTrigger:"有痰||Phlegm",
+        details:[
+          { id:"colour", type:"single", label:"痰色||Colour", options:["白||White","黃||Yellow","透明||Clear"] },
+          { id:"texture", type:"single", label:"痰質||Texture", options:["清稀||Thin","黏稠||Thick"] }
+        ] }
+    ]
+  },
+  tongue: {
+    title: "3. 舌診||3. Tongue Diagnosis",
+    fields: [
+      { id:"bodyColor", type:"single", label:"舌質顏色||Tongue body colour",
+        options:["淡白||Pale white","淡紅（正常）||Pale red (normal)","紅||Red","絳紅（深紅）||Crimson","暗紅或紫暗||Dark red/purplish","淡紫／青紫||Pale/bluish purple"] },
+      { id:"shape", type:"multi", label:"舌形||Tongue shape",
+        options:["正常大小||Normal","胖大有齒痕||Swollen, tooth-marked","瘦薄||Thin","裂紋||Cracked","芒刺||Prickles","舌尖偏紅||Red tip"] },
+      { id:"coatingColor", type:"single", label:"舌苔顏色||Coating colour",
+        options:["無苔||None","白苔||White","黃苔||Yellow","灰黑苔||Grey-black","剝苔／地圖舌||Peeled/map tongue"] },
+      { id:"coatingThickness", type:"single", label:"舌苔厚薄||Coating thickness",
+        options:["薄||Thin","中等||Medium","厚||Thick","厚膩||Thick & greasy"] },
+      { id:"moisture", type:"single", label:"舌苔濕潤度||Coating moisture",
+        options:["濕潤||Moist","偏乾||Slightly dry","乾燥少津||Dry","過度濕滑||Overly wet"] },
+      { id:"sublingual", type:"single", label:"舌下絡脈（進階）||Sublingual veins (advanced)",
+        options:["未觀察||Not observed","淡紅細小（正常）||Pale, thin (normal)","稍怒張變深||Slightly distended","明顯紫暗怒張||Markedly distended"] },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  general: {
+    title: "4. 全身狀況問診||4. General / Systemic",
+    fields: [
+      { id:"coldHeat", type:"single", label:"寒熱||Cold/Heat",
+        options:["怕冷||Cold-averse","怕熱||Heat-averse","忽冷忽熱||Alternating","無明顯||None notable"] },
+      { id:"sweat", type:"multi", label:"汗||Sweating",
+        options:["無異常||None","自汗||Spontaneous (daytime)","盜汗||Night sweats","手心腳心易汗||Sweaty palms/soles","該熱不出汗，反而面赤||Heat response without perspiring, flushing instead"] },
+      { id:"thirst", type:"single", label:"口渴||Thirst",
+        options:["不渴||Not thirsty","渴喜熱飲||Prefers warm","渴喜冷飲||Prefers cold","渴但喝不多||Thirsty but doesn't drink much"] },
+      { id:"appetite", type:"multi", label:"食慾||Appetite",
+        options:["正常||Normal","食慾不振||Poor","多食易飢||Easily hungry","食後腹脹||Bloating after eating"] },
+      { id:"giSymptoms", type:"multi", label:"腸胃症狀||GI symptoms",
+        options:["無明顯||None","脹氣||Bloating","排氣多||Excess gas","火燒心反酸||Heartburn","噁心||Nausea","嘔吐||Vomiting","飯後腹脹嗜睡||Post-meal bloat & sleepy","口氣重||Bad breath"] },
+      { id:"bowelMovement", type:"yesno", label:"今天有解便嗎||Did you have a bowel movement today?", options:YESNO,
+        detailsByValue: {
+          "有||Yes": [
+            { id:"shape", type:"single", label:"大便性狀||Stool shape", options:["偏硬顆粒狀||Hard/pellet","成形但偏乾||Formed, dry","正常香蕉狀||Normal","偏軟不成形||Soft, unformed","稀溏水便||Watery"] },
+            { id:"colour", type:"single", label:"大便顏色||Stool colour", options:["正常黃褐||Normal brown","偏黑||Dark","偏綠||Greenish","偏淡／灰白||Pale/grey"] }
+          ],
+          "無||No": [
+            { id:"status", type:"single", label:"排便狀況||Bowel status", options:["有便意但無力氣||Urge, but no strength to push","無便意||No urge at all"] }
+          ]
+        } },
+      { id:"urineColor", type:"single", label:"小便顏色||Urine colour",
+        options:["淺清||Pale/clear","正常淡黃||Normal","深黃||Dark yellow","偏紅或有灼熱感||Reddish/burning"] },
+      { id:"emotions", type:"multi", label:"情緒||Emotions",
+        options:["平靜||Calm","煩躁易怒||Irritable","焦慮不安||Anxious","情緒低落||Low mood","容易哭泣||Tearful","胸悶嘆氣||Chest tightness/sighing","太專注於工作||Too focused on work","思緒混亂||Chaotic thoughts"] },
+      { id:"energyScore", type:"scale", label:"精力自評||Self-rated energy", min:1, max:5, minLabel:"低||Low", maxLabel:"高||High" },
+      { id:"complexion", type:"multi", label:"面色／皮膚||Complexion/Skin",
+        options:["正常||Normal","蒼白||Pale","萎黃||Sallow","潮紅||Flushed","暗沉無光||Dull","新增痘痘||New breakouts"] },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  organs: {
+    title: "5. 肝脾腎相關觀察與壓力||5. Liver / Spleen / Kidney + Stress",
+    fields: [
+      { id:"liverSigns", type:"multi", perItemSeverity:true, label:"肝相關徵象||Liver signs",
+        options:["無明顯||None","脅肋脹痛||Rib-side pain","頭部兩側或頭頂痛||Temple/vertex headache","容易嘆氣||Frequent sighing","眼睛乾澀或視力模糊||Dry eyes/blurred vision","指甲易脆裂||Brittle nails"] },
+      { id:"spleenSigns", type:"multi", perItemSeverity:true, label:"脾相關徵象||Spleen signs",
+        options:["無明顯||None","四肢沈重乏力||Heavy/weak limbs","容易瘀青||Easy bruising","唇色淡白或脫皮||Pale/peeling lips","思慮過多難以放鬆||Overthinking","大便黏膩沖不乾淨||Sticky stool"] },
+      { id:"kidneySigns", type:"multi", perItemSeverity:true, label:"腎相關徵象||Kidney signs",
+        options:["無明顯||None","腰膝酸軟||Sore back/knees","夜尿頻繁||Frequent night urination","畏寒下肢尤甚||Cold intolerance (legs)","耳鳴||Tinnitus","頭髮易脫落或早白||Hair loss/greying","精神疲憊腿軟無力||Fatigue, weak legs"] },
+      { id:"stressSigns", type:"multi", perItemSeverity:true, label:"壓力身體徵象||Stress signs",
+        options:["無明顯||None","咬牙或夜間磨牙||Jaw clenching/grinding","肩頸緊繃||Tense shoulders/neck","胸悶||Chest tightness"] },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  pulse: {
+    title: "6. 脈診||6. Pulse Diagnosis",
+    fields: [
+      { id:"position", type:"single", label:"脈位||Pulse position",
+        options:["浮||Floating","中取可得（正常）||Moderate (normal)","沉||Sunken"] },
+      { id:"rate", type:"number", label:"脈率（次/分）||Pulse rate (beats/min)",
+        detailsTrigger:"always", details:[{ id:"interp", type:"single", label:"判讀||Interpretation", options:["遲（寒）||Slow","正常||Normal","數（熱）||Rapid"] }] },
+      { id:"strengthForm", type:"multi", label:"脈力與脈形||Pulse strength & form",
+        options:["和緩有力（正常）||Moderate & strong","虛軟無力||Weak/soft","細如絲||Thin as thread","弦||Wiry","滑||Slippery","澀||Choppy","洪大有力||Surging","緊||Tight"] },
+      { id:"sideDiff", type:"single", label:"左右手差異||L/R hand difference",
+        options:["無明顯差異||None","左手較弱||Left weaker","右手較弱||Right weaker","其他||Other"] },
+      { id:"weakerPosition", type:"multi", label:"較弱部位||Weaker position(s)",
+        options:["左寸(心)||L-cun (Heart)","左關(肝)||L-guan (Liver)","左尺(腎)||L-chi (Kidney)","右寸(肺)||R-cun (Lung)","右關(脾)||R-guan (Spleen)","右尺(腎命門)||R-chi (Kidney/Mingmen)"] },
+      { id:"strongerPosition", type:"multi", label:"較強部位||Stronger position(s)",
+        options:["左寸(心)||L-cun (Heart)","左關(肝)||L-guan (Liver)","左尺(腎)||L-chi (Kidney)","右寸(肺)||R-cun (Lung)","右關(脾)||R-guan (Spleen)","右尺(腎命門)||R-chi (Kidney/Mingmen)"] }
+    ]
+  },
+  exercise: {
+    title: "7. 運動||7. Exercise",
+    fields: [
+      { id:"type", type:"single", label:"運動類型||Type",
+        options:["無運動||None","有氧||Cardio","重量訓練||Strength","散步||Walking","瑜伽伸展||Yoga/stretch","混合||Mixed"] },
+      { id:"intensity", type:"single", label:"運動強度自評||Self-rated intensity",
+        options:["輕鬆||Light","適中||Moderate","吃力||Hard","過度||Excessive"] },
+      { id:"postResponse", type:"multi", label:"運動後身體反應||Post-exercise response",
+        options:["有活力||Energetic","正向||Positive","無異常||None","輕微頭暈||Mild dizziness","心悸||Palpitations","延遲性痠痛||Delayed soreness","異常疲憊||Unusual fatigue"] },
+      { id:"stretchTiming", type:"single", label:"晨起或睡前瑜伽伸展||Morning or bedtime stretch",
+        options:["是（晨起）||Morning","是（前一天睡前）||Yes (previous night before bed)","兩者皆是||Both","皆無||Neither"] },
+      { id:"stretchArea", type:"multi", label:"伸展部位||Stretch area",
+        options:["頸肩||Neck/shoulders","上背||Upper back","下背腰部||Lower back","髖部||Hips","大腿後側||Hamstrings","腿外側||Outer leg (IT band)","小腿||Calves","手臂||Arms","腋下||Armpit","全身||Full body"],
+        detailsTrigger:"any", details:[{ id:"sensation", type:"single", label:"該部位感受||Sensation", options:["無不適||None","輕微緊繃||Mild tightness","中度痠痛||Moderate soreness","明顯疼痛||Noticeable pain"] }] },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  diet: {
+    title: "8. 飲食||8. Diet",
+    fields: [
+      { id:"morning", type:"text", label:"早餐||Morning" },
+      { id:"beverage", type:"text", label:"飲品||Beverage" },
+      { id:"lunch", type:"text", label:"午餐||Lunch" },
+      { id:"snack", type:"text", label:"點心||Snack" },
+      { id:"dinner", type:"text", label:"晚餐||Dinner" }
+    ]
+  },
+  preperiod: {
+    title: "9. 經前狀態||9. Pre-period",
+    condition: p => p === "經前||Pre-period",
+    fields: [
+      { id:"breastTenderness", type:"yesno", label:"乳房脹痛||Breast tenderness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"multi", label:"程度／性質||Severity / quality", options:["輕||Mild","中||Moderate","重||Severe","乳頭敏感||Sensitive nipples"] }] },
+      { id:"abdomenPain", type:"yesno", label:"下腹或腰部脹痛||Lower abdomen/back distension", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
+      { id:"moodSwing", type:"single", label:"情緒波動型態||Mood swing pattern",
+        options:["無明顯||None","易怒為主||Mainly irritable","易哭為主||Mainly tearful","兩者皆有||Both"] },
+      { id:"edema", type:"single", label:"水腫||Fluid retention",
+        options:["無||None","輕微||Mild","明顯||Noticeable"] },
+      { id:"skinChange", type:"multi", label:"皮膚變化||Skin changes",
+        options:["無||None","長痘||Breakouts","出油增加||Oilier","泛紅刺激||Irritated","脫皮||Flaky"] },
+      { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
+        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
+      { id:"notes", type:"text", multiline:true, label:"睡眠或食慾變化／其他||Sleep or appetite changes / other" }
+    ]
+  },
+  period: {
+    title: "10. 經期狀態||10. Period",
+    condition: p => p === "經期||Period",
+    fields: [
+      { id:"cycleDay", type:"number", label:"週期第幾天||Cycle day" },
+      { id:"flow", type:"single", label:"經量||Flow",
+        options:["很少||Very light","正常||Normal","偏多||Heavy","大量||Very heavy"] },
+      { id:"colour", type:"single", label:"經色||Colour",
+        options:["淡紅||Pale red","正紅||Bright red","暗紅||Dark red","紫黑帶血塊||Purplish-black with clots"] },
+      { id:"clots", type:"single", label:"血塊||Clots",
+        options:["無||None","少量細小||Small/few","大血塊||Large"] },
+      { id:"texture", type:"single", label:"經質||Texture",
+        options:["清稀||Thin","正常||Normal","黏稠||Thick"] },
+      { id:"painType", type:"multi", label:"經期腹痛||Pain type",
+        options:["冷痛喜按喜溫||Cold, relieved by warmth","脹痛||Distending","刺痛拒按||Stabbing","墜痛||Bearing-down"],
+        detailsTrigger:"any", details:[{ id:"sev", type:"single", label:"程度||Severity", options:["輕度||Mild","中度||Moderate","強烈||Severe","無法忍受||Unbearable"] }] },
+      { id:"backache", type:"yesno", label:"腰痠||Back soreness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
+      { id:"spotting", type:"yesno", label:"點滴出血（非經期間）||Spotting (non-period)", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] },
+      { id:"symptoms", type:"multi", label:"伴隨症狀||Accompanying symptoms",
+        options:["畏寒||Chills","噁心嘔吐||Nausea/vomiting","頭痛||Headache","乳房脹痛持續||Persistent breast pain","腹瀉||Diarrhoea","疲憊嗜睡||Fatigue","腦霧||Brain fog","潮熱||Hot flashes"] },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
+  postperiod: {
+    title: "11. 經後狀態||11. Post-period",
+    condition: p => p === "經後||Post-period",
+    fields: [
+      { id:"recoverySpeed", type:"single", label:"精力恢復速度||Energy recovery speed",
+        options:["1–2天內||Within 1–2 days","3天以上||3+ days","持續疲憊未恢復||Ongoing fatigue"] },
+      { id:"lingering", type:"multi", label:"是否有延續的不適||Lingering discomfort",
+        options:["無||None","腰痠||Back soreness","頭暈||Dizziness","情緒低落||Low mood","持續||Ongoing"] },
+      { id:"dischargeRecovery", type:"single", label:"分泌物恢復情況||Discharge recovery",
+        options:["恢復正常||Normal","偏乾||Drier","偏黏稠||Thicker"] },
+      { id:"moodStability", type:"single", label:"整體情緒穩定度||Overall mood stability",
+        options:["穩定||Stable","仍有波動||Still fluctuating"] }
+    ]
+  }
+};
+
+const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期狀態||Cycle phase today",
+  options:["平日||Regular day","經前||Pre-period","經期||Period","經後||Post-period"] };
+const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
+
+const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet"];
+const CONDITIONAL = ["preperiod","period","postperiod"];
+
+/* ---------------- State ---------------- */
+
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+function blankAnswers(){
+  const a = { meta:{} };
+  Object.keys(SCHEMA).forEach(secId => { a[secId] = {}; });
+  return a;
+}
+
+const state = {
+  lang: (localStorage.getItem("tcm_lang")) || "zh",
+  date: todayStr(),
+  answers: blankAnswers(),
+  done: new Set(),
+  expanded: new Set([ALWAYS_ON[0]]),
+  enteredIds: new Set([ALWAYS_ON[0]]),
+  db: null,
+  dirty: false
+};
+
+function currentOrder(){
+  const phase = state.answers.meta.cyclePhase;
+  const cond = CONDITIONAL.filter(id => SCHEMA[id].condition(phase));
+  return ALWAYS_ON.concat(cond);
+}
+
+function firstIncompleteId(order){
+  return order.find(id => !state.done.has(id));
+}
+
+/* ---------------- Detail visibility ---------------- */
+
+function detailVisible(field, value){
+  if(!field.details) return false;
+  const t = field.detailsTrigger;
+  if(t === "always") return value !== null && value !== undefined && value !== "";
+  if(t === "any"){
+    const excl = field.excludeValues || [];
+    if(Array.isArray(value)) return value.some(v => !excl.includes(v));
+    return !!value && !excl.includes(value);
+  }
+  if(Array.isArray(value)) return value.includes(t);
+  return value === t;
+}
+
+function getActiveDetails(field, value){
+  if(field.detailsByValue){
+    if(Array.isArray(value)){
+      for(const key of Object.keys(field.detailsByValue)){
+        if(value.includes(key)) return field.detailsByValue[key];
+      }
+      return null;
+    }
+    return field.detailsByValue[value] || null;
+  }
+  if(field.details && detailVisible(field, value)) return field.details;
+  return null;
+}
+
+const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
+
+/* ---------------- Rendering ---------------- */
+
+function fieldValue(secId, fieldId){ return state.answers[secId][fieldId]; }
+function setFieldValue(secId, fieldId, value){ state.answers[secId][fieldId] = value; state.dirty = true; }
+function detailValue(secId, fieldId, detailId){ return state.answers[secId][fieldId + "__" + detailId]; }
+function setDetailValue(secId, fieldId, detailId, value){ state.answers[secId][fieldId + "__" + detailId] = value; state.dirty = true; }
+
+function renderOptions(secId, field, value){
+  const isMulti = field.type === "multi";
+  let html = `<div class="opts">` + field.options.map(opt => {
+    const on = isMulti ? (Array.isArray(value) && value.includes(opt)) : (value === opt);
+    return `<button type="button" class="opt${on?" on":""}" data-sec="${secId}" data-field="${field.id}" data-type="${field.type}" data-value="${escAttr(opt)}">${T(opt)}</button>`;
+  }).join("") + `</div>`;
+  if(field.allowOther !== false){
+    const otherVal = fieldValue(secId, field.id+"__other");
+    html += `<input type="text" class="other-input" placeholder="${T("其他（可輸入）||Other (type here)")}" data-sec="${secId}" data-field="${field.id}__other" data-type="text" value="${escAttr(otherVal||"")}">`;
+  }
+  return html;
+}
+
+function renderScale(secId, field, value){
+  let out = `<div class="scale">`;
+  for(let i=field.min;i<=field.max;i++){
+    const on = String(value) === String(i);
+    let label = String(i);
+    if(i===field.min && field.minLabel) label += " " + T(field.minLabel);
+    if(i===field.max && field.maxLabel) label += " " + T(field.maxLabel);
+    out += `<button type="button" class="opt${on?" on":""}" data-sec="${secId}" data-field="${field.id}" data-type="scale" data-value="${i}">${label}</button>`;
+  }
+  return out + `</div>`;
+}
+
+function renderSlider(secId, field, value){
+  const touched = value !== undefined && value !== "" && value !== null;
+  const cur = touched ? Number(value) : Math.round((field.min+field.max)/2);
+  return `<div class="slider-wrap">
+    <input type="range" min="${field.min}" max="${field.max}" step="1" value="${cur}" data-sec="${secId}" data-field="${field.id}" data-type="slider">
+    <div class="slider-labels"><span>${T(field.minLabel||"")}</span><span class="slider-val">${touched?cur:"—"}</span><span>${T(field.maxLabel||"")}</span></div>
+  </div>`;
+}
+
+function renderDetailGroup(secId, field, d){
+  const dv = detailValue(secId, field.id, d.id);
+  let body;
+  if(d.type === "single"){
+    body = `<div class="opts">` + d.options.map(opt => {
+      const on = dv === opt;
+      return `<button type="button" class="opt${on?" on":""}" data-sec="${secId}" data-field="${field.id}" data-detail="${d.id}" data-type="detail" data-value="${escAttr(opt)}">${T(opt)}</button>`;
+    }).join("") + `</div>`;
+  } else if(d.type === "multi"){
+    body = `<div class="opts">` + d.options.map(opt => {
+      const on = Array.isArray(dv) && dv.includes(opt);
+      return `<button type="button" class="opt${on?" on":""}" data-sec="${secId}" data-field="${field.id}" data-detail="${d.id}" data-type="detailmulti" data-value="${escAttr(opt)}">${T(opt)}</button>`;
+    }).join("") + `</div>`;
+  } else {
+    body = `<input type="${d.type==='number'?'number':'text'}" data-sec="${secId}" data-field="${field.id}" data-detail="${d.id}" data-type="detailtext" value="${escAttr(dv||"")}">`;
+  }
+  return `<div class="detail"><div class="q">${T(d.label)}</div>${body}</div>`;
+}
+
+function renderDetails(secId, field, value){
+  const active = getActiveDetails(field, value);
+  if(!active) return "";
+  return active.map(d => renderDetailGroup(secId, field, d)).join("");
+}
+
+function renderPerItemSeverity(secId, field, value){
+  const selected = (Array.isArray(value) ? value : []).filter(v => !NONE_MARKERS.includes(v));
+  if(!selected.length) return "";
+  return `<div class="detail">` + selected.map(v => {
+    const detId = "sev__" + encodeURIComponent(v);
+    const dv = detailValue(secId, field.id, detId);
+    return `<div class="q" style="margin-top:8px;">${T(v)} — ${T("程度||Severity")}</div><div class="opts">` +
+      SEV3.map(opt => {
+        const on = dv === opt;
+        return `<button type="button" class="opt${on?" on":""}" data-sec="${secId}" data-field="${field.id}" data-detail="${detId}" data-type="detail" data-value="${escAttr(opt)}">${T(opt)}</button>`;
+      }).join("") + `</div>`;
+  }).join("") + `</div>`;
+}
+
+function renderField(secId, field){
+  const value = fieldValue(secId, field.id);
+  let control;
+  if(field.type === "scale") control = renderScale(secId, field, value);
+  else if(field.type === "slider") control = renderSlider(secId, field, value);
+  else if(field.type === "single" || field.type === "multi" || field.type === "yesno") control = renderOptions(secId, field, value);
+  else if(field.type === "text") control = field.multiline
+    ? `<textarea data-sec="${secId}" data-field="${field.id}" data-type="text">${escHtml(value||"")}</textarea>`
+    : `<input type="text" data-sec="${secId}" data-field="${field.id}" data-type="text" value="${escAttr(value||"")}">`;
+  else if(field.type === "number") control = `<input type="number" data-sec="${secId}" data-field="${field.id}" data-type="number" value="${escAttr(value||"")}">`;
+  if(field.type === "multi" && field.perItemSeverity) control += renderPerItemSeverity(secId, field, value);
+  return `<div class="field"><label class="q">${T(field.label)}</label>${control}${renderDetails(secId, field, value)}</div>`;
+}
+
+const SECTION_COLORS = {
+  sleep:"lilac", morning:"gold", tongue:"terracotta", general:"periwinkle",
+  organs:"sage", pulse:"slate", exercise:"accent", diet:"pink",
+  preperiod:"pink", period:"terracotta", postperiod:"sage"
+};
+
+function renderSection(secId){
+  const sec = SCHEMA[secId];
+  const isDone = state.done.has(secId);
+  const isExpanded = state.expanded.has(secId);
+  const filledCount = Object.keys(state.answers[secId]).filter(k => {
+    const v = state.answers[secId][k];
+    return Array.isArray(v) ? v.length>0 : (v!==undefined && v!=="" && v!==null);
+  }).length;
+  const tag = isDone ? (filledCount>0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
+  let body = "";
+  if(isExpanded){
+    body = `<div class="sec-body">` + sec.fields.map(f => renderField(secId, f)).join("") +
+      `<div class="btnrow"><button class="btn accent" data-action="done" data-sec="${secId}">${T("完成本節，繼續下一節||Done, next section")}</button></div></div>`;
+  }
+  const justEntered = state.enteredIds.has(secId);
+  const colorVar = SECTION_COLORS[secId] || "accent";
+  const wave = `<svg class="sec-wave" viewBox="0 0 100 20" preserveAspectRatio="none" style="fill:var(--${colorVar})"><path d="M0,14 C20,2 35,20 50,10 C65,0 80,18 100,8 L100,20 L0,20 Z"></path></svg>`;
+  return `<section class="sec${justEntered?" enter":""}" data-sec="${secId}">
+    ${wave}
+    <div class="sec-header" data-action="toggle" data-sec="${secId}">
+      <h2>${T(sec.title)}</h2><span class="tag">${tag}</span>
+    </div>
+    ${body}
+  </section>`;
+}
+
+function renderCycleField(){
+  const value = state.answers.meta.cyclePhase;
+  const html = `<div class="mood-card"><label class="q" style="display:block;margin-bottom:8px;">${T(CYCLE_FIELD.label)}</label>` +
+    `<div class="opts">` + CYCLE_FIELD.options.map(opt => {
+      const on = value === opt;
+      return `<button type="button" class="opt${on?" on":""}" data-cycle="1" data-value="${escAttr(opt)}">${T(opt)}</button>`;
+    }).join("") + `</div></div>`;
+  document.getElementById("cycleField").innerHTML = html;
+}
+
+function renderMood(){
+  const value = state.answers.meta.moodRating;
+  document.getElementById("moodPrompt").textContent = T("今天感覺如何？||How are you feeling today?");
+  document.getElementById("moodHint").textContent = T("點選一個角色來記錄心情||Tap a buddy to log your mood");
+  document.getElementById("moodBlobs").innerHTML = MOOD_WORDS.map((word, i) => {
+    const on = String(value) === String(i+1);
+    return `<button type="button" class="buddy-wrap" data-mood="${i+1}" aria-pressed="${on}">
+      <span class="buddy">
+        <span class="buddy-head"><span class="buddy-eye"></span><span class="buddy-eye"></span></span>
+        <span class="buddy-body"></span>
+      </span>
+      <span class="buddy-label">${T(word)}</span>
+    </button>`;
+  }).join("");
+}
+
+function formatTicketDate(dateStr){
+  const d = new Date(dateStr + "T00:00:00");
+  if(state.lang === "zh") return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日`;
+  return d.toLocaleDateString("en-US", { weekday:"short", month:"short", day:"numeric", year:"numeric" });
+}
+
+function renderApp(){
+  document.documentElement.setAttribute("data-lang", state.lang);
+  document.querySelectorAll("#langToggle button").forEach(b => b.classList.toggle("on", b.dataset.lang === state.lang));
+
+  document.getElementById("brandText").textContent = T("每日中醫日記||Daily TCM Log");
+  document.getElementById("ticketDate").textContent = formatTicketDate(state.date);
+  document.getElementById("ticketSub").textContent = T("今日紀錄||Today's entry");
+  document.getElementById("resetBtn").textContent = T("清空今日||Reset today");
+  document.getElementById("laterBtn").textContent = T("稍後再分析||Save, analyze later");
+  document.getElementById("analyzeBtn").textContent = T("執行分析||Run analysis");
+
+  renderCycleField();
+  renderMood();
+
+  const order = currentOrder();
+  document.getElementById("sections").innerHTML = order.map(renderSection).join("");
+  state.enteredIds.clear();
+  document.getElementById("dateInput").value = state.date;
+  const doneCount = order.filter(id => state.done.has(id)).length;
+  document.getElementById("progressText").textContent = `${T("已完成的段落||Sections done")} ${doneCount} / ${order.length}`;
+  document.getElementById("analyzeBtn").disabled = false;
+  document.getElementById("statusText").textContent = state.dirty ? T("尚未儲存||Unsaved") : T("已儲存||Saved");
+
+  const banner = document.getElementById("storageBanner");
+  if(banner.dataset.armed === "1"){
+    banner.innerHTML = T(
+      "目前無法連接雲端儲存，紀錄僅暫存在本次瀏覽視窗，請務必用「複製摘要」備份。||Cloud storage unavailable right now — this entry only lives in this browser tab. Be sure to copy the summary before closing."
+    );
+  }
+}
+
+function escHtml(s){ return String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function escAttr(s){ return escHtml(s).replace(/"/g,"&quot;"); }
+
+/* ---------------- Events ---------------- */
+
+document.getElementById("langToggle").addEventListener("click", function(e){
+  const btn = e.target.closest("button[data-lang]");
+  if(!btn) return;
+  state.lang = btn.dataset.lang;
+  localStorage.setItem("tcm_lang", state.lang);
+  renderApp();
+});
+
+document.getElementById("cycleField").addEventListener("click", function(e){
+  const btn = e.target.closest("button[data-cycle]");
+  if(!btn) return;
+  const cur = state.answers.meta.cyclePhase;
+  state.answers.meta.cyclePhase = cur === btn.dataset.value ? "" : btn.dataset.value;
+  state.dirty = true;
+  renderApp();
+});
+
+function prefersReducedMotion(){
+  return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+function scrollToSection(secId){
+  requestAnimationFrame(function(){
+    const el = document.querySelector('section.sec[data-sec="'+secId+'"]');
+    if(el) el.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "start" });
+  });
+}
+
+document.getElementById("moodBlobs").addEventListener("click", function(e){
+  const btn = e.target.closest(".buddy-wrap");
+  if(!btn) return;
+  const val = btn.dataset.mood;
+  const cur = state.answers.meta.moodRating;
+  const wasEmpty = !cur;
+  state.answers.meta.moodRating = String(cur) === val ? "" : val;
+  state.dirty = true;
+  renderApp();
+  if(wasEmpty && state.answers.meta.moodRating){
+    const first = firstIncompleteId(currentOrder());
+    if(first) scrollToSection(first);
+  }
+});
+
+document.getElementById("sections").addEventListener("click", function(e){
+  const header = e.target.closest('[data-action="toggle"]');
+  if(header){
+    const id = header.getAttribute("data-sec");
+    if(state.expanded.has(id)) state.expanded.delete(id); else state.expanded.add(id);
+    renderApp();
+    return;
+  }
+  const doneBtn = e.target.closest('[data-action="done"]');
+  if(doneBtn){
+    const id = doneBtn.getAttribute("data-sec");
+    state.done.add(id);
+    state.expanded.delete(id);
+    state.dirty = true;
+    const next = firstIncompleteId(currentOrder());
+    if(next){ state.expanded.add(next); state.enteredIds.add(next); }
+    renderApp();
+    if(next) scrollToSection(next);
+    saveCurrent();
+    return;
+  }
+  const opt = e.target.closest(".opt");
+  if(opt && opt.dataset.type){
+    const secId = opt.dataset.sec, fieldId = opt.dataset.field, val = opt.dataset.value, type = opt.dataset.type;
+    if(type === "detail"){
+      const detId = opt.dataset.detail;
+      const cur = detailValue(secId, fieldId, detId);
+      setDetailValue(secId, fieldId, detId, cur === val ? "" : val);
+    } else if(type === "detailmulti"){
+      const detId = opt.dataset.detail;
+      const cur = detailValue(secId, fieldId, detId) || [];
+      const idx = cur.indexOf(val);
+      const next = cur.slice();
+      if(idx>-1) next.splice(idx,1); else next.push(val);
+      setDetailValue(secId, fieldId, detId, next);
+    } else if(type === "multi"){
+      const cur = fieldValue(secId, fieldId) || [];
+      const idx = cur.indexOf(val);
+      const next = cur.slice();
+      if(idx>-1) next.splice(idx,1); else next.push(val);
+      setFieldValue(secId, fieldId, next);
+    } else if(type === "scale"){
+      const cur = fieldValue(secId, fieldId);
+      setFieldValue(secId, fieldId, String(cur)===val ? "" : val);
+    } else {
+      const cur = fieldValue(secId, fieldId);
+      setFieldValue(secId, fieldId, cur===val ? "" : val);
+    }
+    renderApp();
+  }
+});
+
+document.getElementById("sections").addEventListener("input", function(e){
+  const el = e.target;
+  if(!el.dataset.type) return;
+  const secId = el.dataset.sec, fieldId = el.dataset.field;
+  if(el.dataset.type === "detailtext"){
+    setDetailValue(secId, fieldId, el.dataset.detail, el.value);
+  } else if(el.dataset.type === "slider"){
+    setFieldValue(secId, fieldId, el.value);
+    const label = el.parentElement.querySelector(".slider-val");
+    if(label) label.textContent = el.value;
+  } else {
+    setFieldValue(secId, fieldId, el.value);
+  }
+});
+
+document.getElementById("dateInput").addEventListener("change", function(e){
+  loadDate(e.target.value);
+});
+
+document.getElementById("resetBtn").addEventListener("click", function(){
+  const phase = state.answers.meta.cyclePhase;
+  state.answers = blankAnswers();
+  state.answers.meta.cyclePhase = phase;
+  state.done = new Set();
+  settleExpanded();
+  state.dirty = true;
+  renderApp();
+});
+
+/* ---------------- Summary concatenation ---------------- */
+
+function summarizeDetailValue(dv){
+  if(dv===undefined || dv==="" || (Array.isArray(dv) && dv.length===0)) return null;
+  return Array.isArray(dv) ? dv.map(T).join("、") : T(dv);
+}
+
+function buildSummary(){
+  const order = currentOrder();
+  let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
+  out += T("整體感覺||Overall mood") + "：" + (state.answers.meta.moodRating ? T(MOOD_WORDS[state.answers.meta.moodRating-1]) : "") + "\n\n";
+  order.forEach(secId => {
+    const sec = SCHEMA[secId];
+    const ans = state.answers[secId];
+    const lines = [];
+    sec.fields.forEach(f => {
+      const v = ans[f.id];
+      const other = ans[f.id+"__other"];
+      const hasValue = !(v===undefined || v==="" || (Array.isArray(v) && v.length===0));
+      if(!hasValue && !other) return;
+      let line = T(f.label) + "：" + (hasValue ? (Array.isArray(v) ? v.map(T).join("、") : T(v)) : "");
+      const activeDetails = getActiveDetails(f, v);
+      if(activeDetails){
+        const dparts = activeDetails.map(d => {
+          const s = summarizeDetailValue(ans[f.id+"__"+d.id]);
+          return s ? (T(d.label)+"："+s) : null;
+        }).filter(Boolean);
+        if(dparts.length) line += "（" + dparts.join("；") + "）";
+      }
+      if(f.type === "multi" && f.perItemSeverity){
+        const sevParts = (v||[]).filter(x => !NONE_MARKERS.includes(x)).map(x => {
+          const s = summarizeDetailValue(ans[f.id+"__sev__"+encodeURIComponent(x)]);
+          return s ? (T(x)+"程度："+s) : null;
+        }).filter(Boolean);
+        if(sevParts.length) line += "（" + sevParts.join("；") + "）";
+      }
+      if(other){ line += (hasValue?"；":"") + "其他："+other; }
+      lines.push(line);
+    });
+    if(lines.length){
+      out += T(sec.title) + "\n" + lines.join("\n") + "\n\n";
+    }
+  });
+  return out.trim() + "\n";
+}
+
+/* ---------------- Storage ---------------- */
+
+function docRef(){ return state.db.collection("entries").doc(state.date); }
+
+function settleExpanded(){
+  const next = firstIncompleteId(currentOrder());
+  state.expanded = next ? new Set([next]) : new Set();
+}
+
+function loadDate(dateStr){
+  state.date = dateStr;
+  state.done = new Set();
+  if(!state.db){
+    state.answers = blankAnswers();
+    settleExpanded();
+    state.dirty = false;
+    renderApp();
+    return;
+  }
+  docRef().get().then(function(snap){
+    if(snap.exists()){
+      const data = snap.data();
+      state.answers = data.answers || blankAnswers();
+      if(!state.answers.meta) state.answers.meta = {};
+      state.done = new Set(data.done || []);
+    } else {
+      state.answers = blankAnswers();
+    }
+    settleExpanded();
+    state.dirty = false;
+    renderApp();
+  }).catch(function(){
+    state.answers = blankAnswers();
+    settleExpanded();
+    state.dirty = false;
+    renderApp();
+  });
+}
+
+function saveCurrent(extra){
+  const payload = Object.assign({
+    date: state.date,
+    answers: state.answers,
+    done: Array.from(state.done)
+  }, extra || {});
+  if(!state.db){
+    state.dirty = false;
+    renderApp();
+    return Promise.resolve();
+  }
+  return docRef().set(payload).then(function(){
+    state.dirty = false;
+    renderApp();
+  });
+}
+
+document.getElementById("laterBtn").addEventListener("click", function(){ saveCurrent(); });
+
+document.getElementById("analyzeBtn").addEventListener("click", function(){
+  const summary = buildSummary();
+  saveCurrent({ completedAt: new Date().toISOString() });
+  showSummaryModal(summary);
+});
+
+function showSummaryModal(text){
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `<div class="modal">
+    <h2>${T("今日摘要 — 複製後貼到你的中醫回饋對話||Today's summary — copy this into your TCM feedback chat")}</h2>
+    <textarea readonly id="summaryText"></textarea>
+    <div class="btnrow">
+      <button class="btn accent" id="copySummaryBtn">${T("複製||Copy")}</button>
+      <button class="btn ghost" id="closeSummaryBtn">${T("關閉||Close")}</button>
+    </div>
+  </div>`;
+  document.body.appendChild(backdrop);
+  const ta = backdrop.querySelector("#summaryText");
+  ta.value = text;
+  const copyLabel = T("複製||Copy"), copiedLabel = T("已複製 ✓||Copied ✓");
+  backdrop.querySelector("#copySummaryBtn").addEventListener("click", function(){
+    ta.select();
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text);
+    } else {
+      document.execCommand("copy");
+    }
+    this.textContent = copiedLabel;
+    setTimeout(() => { this.textContent = copyLabel; }, 1800);
+  });
+  backdrop.querySelector("#closeSummaryBtn").addEventListener("click", function(){ backdrop.remove(); });
+  backdrop.addEventListener("click", function(e){ if(e.target === backdrop) backdrop.remove(); });
+}
+
+/* ---------------- Init ---------------- */
+
+renderApp();
+
+if(window.claude && window.claude.use){
+  window.claude.use("db").then(function(db){
+    state.db = db;
+    if(!db){
+      document.getElementById("storageBanner").dataset.armed = "1";
+      document.getElementById("storageBanner").classList.add("show");
+      renderApp();
+    } else {
+      loadDate(state.date);
+    }
+  }).catch(function(){
+    document.getElementById("storageBanner").dataset.armed = "1";
+    document.getElementById("storageBanner").classList.add("show");
+    renderApp();
+  });
+  setTimeout(function(){
+    if(!state.db){
+      document.getElementById("storageBanner").dataset.armed = "1";
+      document.getElementById("storageBanner").classList.add("show");
+      renderApp();
+    }
+  }, 4000);
+} else {
+  document.getElementById("storageBanner").dataset.armed = "1";
+  document.getElementById("storageBanner").classList.add("show");
+  renderApp();
+}
+})();
+</script>
