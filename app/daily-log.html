@@ -222,7 +222,7 @@ const SCHEMA = {
       { id:"riseSpeed", type:"single", label:"起床速度||Getting-up speed",
         options:["一醒即起身||Up immediately","賴床5–10分||Lingered 5–10 min","賴床15分以上||Lingered 15+ min","起身時頭暈||Dizzy on standing"] },
       { id:"mood", type:"multi", label:"晨起心情||Morning mood",
-        options:["平靜||Calm","煩躁||Irritable","低落||Low","焦慮||Anxious","情緒起伏||Mood swings","失控感||Not in control","還好||Fine","開心||Happy","難過||Sad","敏感||Sensitive","生氣||Angry","自信||Confident","興奮||Excited","不安||Insecure","感恩||Grateful","無感||Indifferent","無力||Lacking energy"] },
+        options:["平靜||Calm","煩躁||Irritable","低落||Low","焦慮||Anxious","情緒起伏||Mood swings","失控感||Not in control","還好||Fine","開心||Happy","難過||Sad","敏感||Sensitive","生氣||Angry","自信||Confident","興奮||Excited","不安||Insecure","感恩||Grateful","無感||Indifferent","無力||Lacking energy","防禦性||Defensive"] },
       { id:"energy", type:"single", label:"精力||Energy",
         options:["精疲力盡||Exhausted","疲倦||Tired","還好||OK","有活力||Energetic","精力充沛||Fully energised"] },
       { id:"mind", type:"multi", label:"心智狀態||Mind",
@@ -278,6 +278,16 @@ const SCHEMA = {
       { id:"giSymptoms", type:"multi", label:"腸胃症狀||GI symptoms",
         options:["無明顯||None","脹氣||Bloating","排氣多||Excess gas","火燒心反酸||Heartburn","噁心||Nausea","嘔吐||Vomiting","飯後腹脹嗜睡||Post-meal bloat & sleepy","口氣重||Bad breath"] },
       { id:"bowelMovement", type:"yesno", label:"今天有解便嗎||Did you have a bowel movement today?", options:YESNO,
+        detailsByValue: {
+          "有||Yes": [
+            { id:"shape", type:"single", label:"大便性狀||Stool shape", options:["偏硬顆粒狀||Hard/pellet","成形但偏乾||Formed, dry","正常香蕉狀||Normal","偏軟不成形||Soft, unformed","稀溏水便||Watery"] },
+            { id:"colour", type:"single", label:"大便顏色||Stool colour", options:["正常黃褐||Normal brown","偏黑||Dark","偏綠||Greenish","偏淡／灰白||Pale/grey"] }
+          ],
+          "無||No": [
+            { id:"status", type:"single", label:"排便狀況||Bowel status", options:["有便意但無力氣||Urge, but no strength to push","無便意||No urge at all"] }
+          ]
+        } },
+      { id:"prevDayBowelMovement", type:"yesno", label:"昨天有解便嗎（如昨天忘記記錄，會補記到昨天的日誌）||Did you have a bowel movement yesterday? (if you forgot to log it, this adds it to yesterday's entry)", options:YESNO,
         detailsByValue: {
           "有||Yes": [
             { id:"shape", type:"single", label:"大便性狀||Stool shape", options:["偏硬顆粒狀||Hard/pellet","成形但偏乾||Formed, dry","正常香蕉狀||Normal","偏軟不成形||Soft, unformed","稀溏水便||Watery"] },
@@ -352,7 +362,9 @@ const SCHEMA = {
       { id:"beverage", type:"text", label:"飲品||Beverage" },
       { id:"lunch", type:"text", label:"午餐||Lunch" },
       { id:"snack", type:"text", label:"點心||Snack" },
-      { id:"dinner", type:"text", label:"晚餐||Dinner" }
+      { id:"dinner", type:"text", label:"晚餐||Dinner" },
+      { id:"prevDayLateMeal", type:"text", multiline:true, label:"昨天最後一餐之後吃的東西（如宵夜，如有會補記到昨天的日誌）||Anything eaten after yesterday's last logged meal (e.g. a late snack — if any, this adds it to yesterday's entry)" },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
   preperiod: {
@@ -734,6 +746,7 @@ document.getElementById("sections").addEventListener("click", function(e){
     state.done.add(id);
     state.expanded.delete(id);
     state.dirty = true;
+    if(id === "general" || id === "diet") amendPreviousDay(id);
     const next = firstIncompleteId(currentOrder());
     if(next){ state.expanded.add(next); state.enteredIds.add(next); }
     renderApp();
@@ -850,6 +863,60 @@ function buildSummary(){
 /* ---------------- Storage ---------------- */
 
 function docRef(){ return state.db.collection("entries").doc(state.date); }
+function docRefFor(dateStr){ return state.db.collection("entries").doc(dateStr); }
+
+function shiftDate(dateStr, delta){
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0,10);
+}
+
+/* ---------------- Retroactive prev-day amendments ---------------- */
+/* "Yesterday's bowel movement" / "late meal after yesterday's last entry" are
+   answered on TODAY's form (so nothing forgotten yesterday blocks today's flow),
+   but the data belongs to yesterday's record. We append it — never overwrite —
+   to yesterday's own notes field, clearly marked as added retroactively. */
+
+function summarizePrevDayBowel(g){
+  const v = g.prevDayBowelMovement;
+  if(!v) return null;
+  let line = T("解便狀況||Bowel movement") + "：" + T(v);
+  if(v === "有||Yes"){
+    const parts = [];
+    if(g.prevDayBowelMovement__shape) parts.push(T("大便性狀||Stool shape") + "：" + T(g.prevDayBowelMovement__shape));
+    if(g.prevDayBowelMovement__colour) parts.push(T("大便顏色||Stool colour") + "：" + T(g.prevDayBowelMovement__colour));
+    if(parts.length) line += "（" + parts.join("；") + "）";
+  } else if(v === "無||No"){
+    if(g.prevDayBowelMovement__status) line += "（" + T("排便狀況||Bowel status") + "：" + T(g.prevDayBowelMovement__status) + "）";
+  }
+  return line;
+}
+
+function summarizePrevDayMeal(d){
+  const v = d.prevDayLateMeal;
+  if(!v) return null;
+  return T("宵夜／補充飲食||Late snack / extra food") + "：" + v;
+}
+
+function amendPreviousDay(sourceSecId){
+  if(!state.db) return;
+  const targetDate = shiftDate(state.date, -1);
+  let line = null;
+  if(sourceSecId === "general") line = summarizePrevDayBowel(state.answers.general);
+  else if(sourceSecId === "diet") line = summarizePrevDayMeal(state.answers.diet);
+  if(!line) return;
+  const targetSecId = sourceSecId;
+  const stamp = T("［由||［added from ") + formatTicketDate(state.date) + T("補記］||on, added retroactively］");
+  docRefFor(targetDate).get().then(function(snap){
+    const data = snap.exists() ? snap.data() : { date: targetDate, answers: blankAnswers(), done: [] };
+    if(!data.answers) data.answers = blankAnswers();
+    if(!data.answers[targetSecId]) data.answers[targetSecId] = {};
+    const existingNotes = data.answers[targetSecId].notes;
+    data.answers[targetSecId].notes = (existingNotes ? existingNotes + "\n" : "") + stamp + " " + line;
+    data.amended = true;
+    return docRefFor(targetDate).set(data);
+  }).catch(function(){ /* best-effort — never blocks today's own save */ });
+}
 
 function settleExpanded(){
   const next = firstIncompleteId(currentOrder());

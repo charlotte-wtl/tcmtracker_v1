@@ -2,6 +2,11 @@
 
 Captured from the user's actual first days of use. Schema/logic fixes below were shipped 2026-09-12 (ahead of the full brand/visual Sprint 2, at user's request, since she needed them before filling in the next day). Visual/animation/brand work is still fully deferred to the Sprint 2 design pass.
 
+## ✅ Shipped 2026-09-14
+- **Morning mood**: added 防禦性/Defensive.
+- **Retroactive previous-day amendments (new mechanism)**: two new fields on today's form — "did you have a bowel movement yesterday?" (general, right under today's version, same branching) and "anything eaten after yesterday's last logged meal?" (diet). Answering either appends a clearly-marked, timestamped line ("［added from [today's date], added retroactively］...") to *yesterday's* stored notes field for that section — never overwrites yesterday's original answers, and creates yesterday's record from scratch if it didn't exist yet. Yesterday's document also gets `amended: true` at the top level for a future "which days were later completed" view. Triggered when the General/Diet section's "Done" button is pressed, not on every autosave, to avoid duplicate appends on repeated edits.
+- **Diet section gained a `notes` field** (previously the only always-on section without one) — needed as the display target for the late-meal amendment when that day is reopened, and generally useful.
+
 ## ✅ Shipped 2026-09-13
 - **Multi-select audit**: several fields that should allow more than one simultaneous answer were still `single`-type and have been converted to `multi`: 心智狀態/Mind (morning), 晨起口感/Morning mouth taste, 喉嚨狀況/Throat condition, 咳嗽／痰/Cough-Phlegm (morning), 汗/Sweating, 食慾/Appetite, 面色／皮膚/Complexion-Skin (general), 運動後身體反應/Post-exercise response (exercise), 皮膚變化/Skin changes, 分泌物型態/Discharge type (pre-period), 經期腹痛/Pain type (period), 是否有延續的不適/Lingering discomfort (post-period). Left as single where the options are genuinely mutually exclusive states (e.g. 寒熱/Cold-Heat, 脈位/Pulse position, 情緒波動型態/Mood swing pattern which already has a "both" option).
 - **"Run analysis" button bug fix**: the button was disabled until every section was marked Done, so an incomplete day silently did nothing when tapped — no error, no summary, just looked broken. It's now always clickable and always shows the concatenated bilingual summary regardless of section-completion state.
