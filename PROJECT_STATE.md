@@ -159,30 +159,31 @@ The user keeps filling in `app/daily-log.html` daily (published Artifact:
 the Sprint 2+ real-app decision below plays out — the Sprint 1 tool isn't
 paused or replaced yet.
 
-## Sprint 2+ tech-stack decision (open, needs user's call)
+## Sprint 2+ tech-stack decision — resolved 2026-09-15
 
-User's 2026-09-13 user-journey draft describes a full app (nav bar, native
-feel, local-first + anonymized opt-in research sync) that goes beyond what a
-single-page Claude Artifact can do. Two paths on the table, not yet chosen:
+**Real coded web app with its own backend, built in JS** (not staying on the
+Claude Artifact long-term; not native/App Store for v1). The user's explicit
+top priority for the whole build: saving must be bulletproof — every change
+persisted within ~1-2s, never lost, regardless of network state. This was
+called out directly because of the Sprint 1 auto-save bug (fixed 2026-09-15,
+see `sprint2-feedback.md`) that motivated this decision.
 
-1. **Keep extending the Claude Artifact** — add routing/screens/state to the
-   existing single-file model. Zero extra infra cost, fastest iteration, but
-   no true native chrome/App Store presence, and the `db` capability is tied
-   to the user's Claude account, not a natural fit for the local-first +
-   anonymized-sync privacy model she wants.
-2. **Build a real coded app with its own backend** — native or cross-platform
-   client + a real server/database the user (or Claude, on her behalf)
-   controls. Matches the journey doc's native nav bar and privacy model, but
-   is a materially bigger build: real hosting, a proper local-first data
-   layer, an anonymization strategy for the opt-in research sync, and (for
-   App Store distribution) Apple Developer Program enrollment.
+Still open (not blocking, but needed before/during Sprint 2 build — see
+`PRD-v1.md` §7 for the full list): hosting/backend choice, auth model for a
+local-first no-email app, and history-import mechanics for the ~5 months of
+pre-app data (resolved to live in `personal_tcm_daily_log` and attach at the
+profile level, per PRD §2 and §4.6 — format/parsing still undecided).
 
-Rough cost shape discussed with the user (ballpark, not a quote): DIY backend
-hosting/DB is roughly free–$25/mo at personal scale, rising with real usage;
-Apple Developer Program is a flat $99/year if a native iOS app ships;
-hiring outside help for a "proper app" build varies enormously (low
+Rough cost shape discussed with the user earlier (ballpark, not a quote): DIY
+backend hosting/DB is roughly free–$25/mo at personal scale, rising with real
+usage; hiring outside help for a "proper app" build varies enormously (low
 thousands for a bare MVP to tens of thousands+ for a polished multi-feature
 app) and needs a real scoped quote from an actual dev/agency, not a Claude
 estimate. Staying on GitHub-as-durable-storage (already done, this repo +
-`personal_tcm_daily_log`) is a safe bridge regardless of which path is
-chosen — nothing already saved needs to be redone.
+`personal_tcm_daily_log`) is a safe bridge regardless of backend choice —
+nothing already saved needs to be redone.
+
+**See `docs/PRD-v1.md` for the full product spec** — user journey, resolved
+decisions, non-functional data-durability requirement, privacy model, and
+remaining open questions. This file's roadmap below is superseded by that
+PRD's §8 phasing for anything past Sprint 1.9.

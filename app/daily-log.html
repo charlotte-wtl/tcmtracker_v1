@@ -705,6 +705,7 @@ document.getElementById("cycleField").addEventListener("click", function(e){
   state.answers.meta.cyclePhase = cur === btn.dataset.value ? "" : btn.dataset.value;
   state.dirty = true;
   renderApp();
+  scheduleAutoSave();
 });
 
 function prefersReducedMotion(){
@@ -726,6 +727,7 @@ document.getElementById("moodBlobs").addEventListener("click", function(e){
   state.answers.meta.moodRating = String(cur) === val ? "" : val;
   state.dirty = true;
   renderApp();
+  scheduleAutoSave();
   if(wasEmpty && state.answers.meta.moodRating){
     const first = firstIncompleteId(currentOrder());
     if(first) scrollToSection(first);
@@ -782,6 +784,7 @@ document.getElementById("sections").addEventListener("click", function(e){
       setFieldValue(secId, fieldId, cur===val ? "" : val);
     }
     renderApp();
+    scheduleAutoSave();
   }
 });
 
@@ -798,6 +801,7 @@ document.getElementById("sections").addEventListener("input", function(e){
   } else {
     setFieldValue(secId, fieldId, el.value);
   }
+  scheduleAutoSave();
 });
 
 document.getElementById("dateInput").addEventListener("change", function(e){
@@ -953,6 +957,11 @@ function loadDate(dateStr){
   });
 }
 
+function updateStatusText(){
+  const el = document.getElementById("statusText");
+  if(el) el.textContent = state.dirty ? T("尚未儲存||Unsaved") : T("已儲存||Saved");
+}
+
 function saveCurrent(extra){
   const payload = Object.assign({
     date: state.date,
@@ -961,14 +970,29 @@ function saveCurrent(extra){
   }, extra || {});
   if(!state.db){
     state.dirty = false;
-    renderApp();
+    updateStatusText();
     return Promise.resolve();
   }
   return docRef().set(payload).then(function(){
     state.dirty = false;
-    renderApp();
+    updateStatusText();
   });
 }
+
+let autoSaveTimer = null;
+function scheduleAutoSave(){
+  updateStatusText();
+  if(autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(function(){ autoSaveTimer = null; saveCurrent(); }, 1200);
+}
+function flushAutoSave(){
+  if(autoSaveTimer){ clearTimeout(autoSaveTimer); autoSaveTimer = null; }
+  if(state.dirty) saveCurrent();
+}
+document.addEventListener("visibilitychange", function(){
+  if(document.visibilityState === "hidden") flushAutoSave();
+});
+window.addEventListener("pagehide", flushAutoSave);
 
 document.getElementById("laterBtn").addEventListener("click", function(){ saveCurrent(); });
 
