@@ -159,6 +159,60 @@ The user keeps filling in `app/daily-log.html` daily (published Artifact:
 the Sprint 2+ real-app decision below plays out — the Sprint 1 tool isn't
 paused or replaced yet.
 
+## Sprint 2 — real app skeleton + daily log, built 2026-09-15 (awaiting user review)
+
+Storage/hosting open questions from PRD §7.1 are now resolved: **static PWA,
+no server backend.** IndexedDB is the primary on-device store (instant,
+always-available autosave — satisfies PRD §3 without depending on a
+network round-trip), mirrored in the background to a private GitHub repo via
+the Contents API so entries follow the user across devices (chosen over
+iCloud Drive/Obsidian, which browsers can't write to directly, and over
+Google Drive, which would need an OAuth setup first). Auth model (§7.2) is a
+personal access token pasted into the Profile screen once per device — no
+email, no account system.
+
+Lives at `app/web/` (separate from the still-live Sprint 1 Artifact at
+`app/daily-log.html` — untouched, not replaced yet):
+
+```
+app/web/
+├── index.html          — shell: loads fonts, css, js/app.js as an ES module
+├── manifest.json, sw.js — PWA installability + app-shell offline cache
+├── icons/               — generated placeholder app icons
+├── css/style.css        — Japandi design system (warm neutrals, muted
+│                          per-section earth-tone accents, Fraunces+Inter)
+└── js/
+    ├── schema.js         — the 11-section question schema, ported verbatim
+    ├── i18n.js           — T() bilingual helper (unchanged convention)
+    ├── db.js              — IndexedDB wrapper (entries + settings stores)
+    ├── sync.js            — GitHub Contents API push + retry-on-reconnect
+    ├── daily-log.js        — the daily-log screen, ported from the Artifact
+    └── app.js               — shell: 5-item nav, sticky save/sync status
+                                strip, Profile screen's GitHub-token form
+```
+
+Built and reviewed in-session (see chat for screenshots at desktop, mobile
+width, and light/dark): sequential section reveal, autosave-on-every-change,
+reload persists exactly where you left off, bilingual toggle, save-state
+strip reads "Saved" / "Saving..." / "Unsaved — offline" plus a separate
+sync chip ("Synced" / "Not synced to cloud" / "GitHub not set up") so local
+durability and cross-device sync are never conflated. GitHub sync itself is
+implemented but **not yet tested against a real token/repo** — that's the
+first thing to do on next open.
+
+**Scope for this pass, by explicit user instruction: daily log only, then
+stop for review.** Chat/Home/History nav destinations exist (bilingual,
+Japandi-styled) but are placeholder screens pointing at "later phase" —
+not built out. **Stated priority order for what comes next: (1) daily log
+[done, pending review], (2) history/completion calendar, (3) cabinet
+(tea/supplement tracker).** Do not start on the calendar or cabinet until
+the user has reviewed this pass on her phone/laptop.
+
+To run locally: `python3 -m http.server 8787 --directory app/web` (or the
+`.claude/launch.json` "tcm-web-app" preview config), then open
+`http://localhost:8787`. Needs a real HTTP server, not `file://` — ES
+modules won't load from a bare file path in most browsers.
+
 ## Sprint 2+ tech-stack decision — resolved 2026-09-15
 
 **Real coded web app with its own backend, built in JS** (not staying on the
