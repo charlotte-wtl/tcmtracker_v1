@@ -168,29 +168,32 @@ async function renderProfile() {
       <h2 style="font-size:1rem;margin-bottom:4px;">${T("GitHub 雲端同步||GitHub sync")}</h2>
       <p class="settings-hint">${T("需要一個有 repo 權限的 GitHub personal access token，僅用於寫入你自己指定的私人倉庫。||Needs a GitHub personal access token with repo access, used only to write to a private repo you specify.")}</p>
 
-      <label for="ghToken">${T("Personal access token||Personal access token")}</label>
-      <input type="password" id="ghToken" autocomplete="off" spellcheck="false" placeholder="github_pat_..." value="${cfg.gh_token || ""}">
-      <p class="settings-hint">${T("此 token 只保留在這個分頁，關閉分頁就會清除，不會存到裝置上。每次開啟需重新貼上。||This token is kept only in this browser tab. It is cleared when the tab closes and is never written to the device — you will paste it again next session.")}</p>
-      <div class="btnrow" style="padding-top:8px;">
-        <button class="btn ghost" id="ghForgetBtn">${T("立即清除 token||Forget token now")}</button>
-      </div>
+      <!-- A real <form> with a username field ahead of the password field is
+           what lets iCloud Keychain / Apple Passwords offer to save and
+           autofill the token. The app still never persists it itself. -->
+      <form id="ghForm" autocomplete="on">
+        <label for="ghOwner">${T("GitHub 帳號||GitHub owner")}</label>
+        <input type="text" id="ghOwner" name="username" autocomplete="username" value="${cfg.gh_owner || "charlotte-wtl"}">
 
-      <label for="ghOwner">${T("GitHub 帳號||GitHub owner")}</label>
-      <input type="text" id="ghOwner" value="${cfg.gh_owner || "charlotte-wtl"}">
+        <label for="ghRepo">${T("倉庫名稱||Repository name")}</label>
+        <input type="text" id="ghRepo" value="${cfg.gh_repo || "personal_tcm_daily_log"}">
 
-      <label for="ghRepo">${T("倉庫名稱||Repository name")}</label>
-      <input type="text" id="ghRepo" value="${cfg.gh_repo || "personal_tcm_daily_log"}">
+        <label for="ghBranch">${T("分支||Branch")}</label>
+        <input type="text" id="ghBranch" value="${cfg.gh_branch || "main"}">
 
-      <label for="ghBranch">${T("分支||Branch")}</label>
-      <input type="text" id="ghBranch" value="${cfg.gh_branch || "main"}">
+        <label for="ghPrefix">${T("路徑前綴||Path prefix")}</label>
+        <input type="text" id="ghPrefix" value="${cfg.gh_path_prefix || "user-data/"}">
 
-      <label for="ghPrefix">${T("路徑前綴||Path prefix")}</label>
-      <input type="text" id="ghPrefix" value="${cfg.gh_path_prefix || "user-data/"}">
+        <label for="ghToken">${T("Personal access token||Personal access token")}</label>
+        <input type="password" id="ghToken" name="password" autocomplete="current-password" spellcheck="false" placeholder="github_pat_..." value="${cfg.gh_token || ""}">
+        <p class="settings-hint">${T("此 token 不會存到裝置上，關閉分頁即清除。可讓 Apple 密碼／iCloud 鑰匙圈記住並自動填入 — 存在鑰匙圈而不是這個網站。||This token is never written to the device and is cleared when the tab closes. Let Apple Passwords / iCloud Keychain save and autofill it — stored in your keychain, not in this site.")}</p>
 
-      <div class="btnrow">
-        <button class="btn accent" id="ghSaveBtn">${T("儲存||Save")}</button>
-        <button class="btn" id="ghTestBtn">${T("測試連線||Test connection")}</button>
-      </div>
+        <div class="btnrow">
+          <button class="btn accent" type="submit" id="ghSaveBtn">${T("儲存||Save")}</button>
+          <button class="btn" type="button" id="ghTestBtn">${T("測試連線||Test connection")}</button>
+          <button class="btn ghost" type="button" id="ghForgetBtn">${T("清除 token||Forget token")}</button>
+        </div>
+      </form>
       <div class="settings-status" id="ghStatus"></div>
     </div>
 
@@ -240,7 +243,10 @@ async function renderProfile() {
     return missing;
   }
 
-  screens.profile.querySelector("#ghSaveBtn").addEventListener("click", async () => {
+  // Handled as a form submit (not a button click) so the browser treats it as
+  // a credential submission and the keychain offers to save the token.
+  screens.profile.querySelector("#ghForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
     const values = await saveFormValues();
     const missing = missingFields(values);
     if (missing.length) {

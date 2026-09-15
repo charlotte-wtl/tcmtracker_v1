@@ -28,16 +28,22 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first: a deployed update must take effect on the next load, not the
+// one after. Serving cache-first left the app one reload behind its own code,
+// which is how a stale stylesheet survives a "reload". The cache remains the
+// offline fallback, which is the only job it actually needs to do here.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return; // never intercept the GitHub API
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request).then((res) => {
-        if (res.ok) caches.open(CACHE).then((cache) => cache.put(event.request, res.clone()));
+    fetch(event.request)
+      .then((res) => {
+        if (res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((cache) => cache.put(event.request, copy));
+        }
         return res;
-      }).catch(() => cached);
-      return cached || network;
-    })
+      })
+      .catch(() => caches.match(event.request))
   );
 });
