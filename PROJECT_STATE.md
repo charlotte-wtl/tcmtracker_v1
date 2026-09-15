@@ -208,10 +208,41 @@ not built out. **Stated priority order for what comes next: (1) daily log
 (tea/supplement tracker).** Do not start on the calendar or cabinet until
 the user has reviewed this pass on her phone/laptop.
 
+**Live at https://charlotte-wtl.github.io/tcmtracker_v1/** — deployed from
+`app/web/` by `.github/workflows/pages.yml` on every push to `main`. Only
+`app/web` is published; the rest of the repo is not served as a website.
+
 To run locally: `python3 -m http.server 8787 --directory app/web` (or the
 `.claude/launch.json` "tcm-web-app" preview config), then open
 `http://localhost:8787`. Needs a real HTTP server, not `file://` — ES
 modules won't load from a bare file path in most browsers.
+
+### Why not the Claude Artifact (resolved 2026-09-15)
+
+The app was briefly published as an Artifact for a shareable link. **GitHub
+sync can never work there**: Artifacts run under a CSP that blocks outbound
+`fetch` to non-allowlisted hosts, `api.github.com` included. The Artifact
+copy is fine for looking at the UI, but Pages is the real deployment.
+
+### Credential handling
+
+The GitHub token is **never persisted to the device** — `sessionStorage`
+only, cleared when the tab closes, and any token written by an earlier build
+is purged at startup. The token field is marked up as a real credential field
+inside a form (username field ahead of it) so Apple Passwords / iCloud
+Keychain can save and autofill it; the keychain holds it, the app does not.
+Passkeys were considered and don't apply — WebAuthn yields a signed assertion,
+not a bearer token GitHub's API would accept.
+
+### Multi-user
+
+Each device claims a `uNNN` id (next unused, gaps never reused) stored in
+IndexedDB, and writes to `user-data/<uNNN>/<date>.json` plus a rendered
+`user-data/<uNNN>_daily_log.md`. The JSON is the source of truth — the
+calendar needs to reload and edit past days, which markdown can't round-trip.
+The markdown is rebuilt on a slower timer (8s idle) so typing doesn't rewrite
+the whole log repeatedly. **Charlotte's own device must be set to `u001`** in
+Profile to continue her existing log rather than auto-claiming `u002`.
 
 ## Sprint 2+ tech-stack decision — resolved 2026-09-15
 
