@@ -6,10 +6,12 @@
 
 import { T, getLang } from "./i18n.js";
 import {
-  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, CONDITIONAL, NONE_MARKERS, SECTION_COLORS,
+  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, NONE_MARKERS, SECTION_COLORS,
 } from "./schema.js";
 import { getEntry, putEntry } from "./db.js";
 import { syncEntry, isConfigured } from "./sync.js";
+import { todayStr, shiftDate, parseDateStr } from "./dates.js";
+import { sectionOrder, getActiveDetails, sectionLines } from "./summary.js";
 
 const TONE_VARS = {
   mauve: "var(--tone-mauve)", ochre: "var(--tone-ochre)", clay: "var(--tone-clay)",
@@ -17,11 +19,18 @@ const TONE_VARS = {
   rose: "var(--tone-rose)",
 };
 
-function todayStr() { return new Date().toISOString().slice(0, 10); }
-
 function blankAnswers() {
   const a = { meta: {} };
   Object.keys(SCHEMA).forEach((secId) => { a[secId] = {}; });
+  return a;
+}
+
+// Entries saved before a section existed (e.g. the regular-day section) lack
+// its key; fill the gaps so rendering never meets an undefined section.
+function withAllSections(answers) {
+  const a = answers || {};
+  if (!a.meta) a.meta = {};
+  Object.keys(SCHEMA).forEach((secId) => { if (!a[secId]) a[secId] = {}; });
   return a;
 }
 
@@ -50,6 +59,10 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
       </div>
       <input type="date" id="dateInput">
     </div>
+    <div class="pastday-bar" id="pastDayBar" hidden>
+      <span id="pastDayText"></span>
+      <button type="button" class="btn ghost" id="backToTodayBtn"></button>
+    </div>
     <div class="mood-card">
       <p class="mood-prompt" id="moodPrompt"></p>
       <p class="mood-hint" id="moodHint"></p>
@@ -68,37 +81,9 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   const $ = (sel) => root.querySelector(sel);
 
   function currentOrder() {
-    const phase = state.answers.meta.cyclePhase;
-    const cond = CONDITIONAL.filter((id) => SCHEMA[id].condition(phase));
-    return ALWAYS_ON.concat(cond);
+    return sectionOrder(state.answers.meta.cyclePhase);
   }
   function firstIncompleteId(order) { return order.find((id) => !state.done.has(id)); }
-
-  function detailVisible(field, value) {
-    if (!field.details) return false;
-    const t = field.detailsTrigger;
-    if (t === "always") return value !== null && value !== undefined && value !== "";
-    if (t === "any") {
-      const excl = field.excludeValues || [];
-      if (Array.isArray(value)) return value.some((v) => !excl.includes(v));
-      return !!value && !excl.includes(value);
-    }
-    if (Array.isArray(value)) return value.includes(t);
-    return value === t;
-  }
-  function getActiveDetails(field, value) {
-    if (field.detailsByValue) {
-      if (Array.isArray(value)) {
-        for (const key of Object.keys(field.detailsByValue)) {
-          if (value.includes(key)) return field.detailsByValue[key];
-        }
-        return null;
-      }
-      return field.detailsByValue[value] || null;
-    }
-    if (field.details && detailVisible(field, value)) return field.details;
-    return null;
-  }
 
   function fieldValue(secId, fieldId) { return state.answers[secId][fieldId]; }
   function setFieldValue(secId, fieldId, value) { state.answers[secId][fieldId] = value; state.dirty = true; }
@@ -250,15 +235,19 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   }
 
   function formatTicketDate(dateStr) {
-    const d = new Date(dateStr + "T00:00:00");
+    const d = parseDateStr(dateStr);
     if (getLang() === "zh") return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
     return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
   }
 
   function renderApp() {
+    const isToday = state.date === todayStr();
     $("#ticketDate").textContent = formatTicketDate(state.date);
-    $("#ticketSub").textContent = T("今日紀錄||Today's entry");
-    $("#resetBtn").textContent = T("清空今日||Reset today");
+    $("#ticketSub").textContent = isToday ? T("今日紀錄||Today's entry") : T("過去的紀錄||Past entry");
+    $("#resetBtn").textContent = isToday ? T("清空今日||Reset today") : T("清空這一天||Reset this day");
+    $("#pastDayBar").hidden = isToday;
+    $("#pastDayText").textContent = T("正在編輯過去的日子||Editing a past day");
+    $("#backToTodayBtn").textContent = T("回到今天||Back to today");
     $("#laterBtn").textContent = T("稍後再分析||Save, analyze later");
     $("#analyzeBtn").textContent = T("執行分析||Run analysis");
 
@@ -269,6 +258,7 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     $("#sections").innerHTML = order.map(renderSection).join("");
     state.enteredIds.clear();
     $("#dateInput").value = state.date;
+    $("#dateInput").max = todayStr();
     const doneCount = order.filter((id) => state.done.has(id)).length;
     $("#progressText").textContent = `${T("已完成的段落||Sections done")} ${doneCount} / ${order.length}`;
 
@@ -383,7 +373,8 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     scheduleAutoSave();
   });
 
-  $("#dateInput").addEventListener("change", (e) => { loadDate(e.target.value); });
+  $("#dateInput").addEventListener("change", (e) => { if (e.target.value) loadDate(e.target.value); });
+  $("#backToTodayBtn").addEventListener("click", () => { loadDate(todayStr()); window.scrollTo(0, 0); });
 
   $("#resetBtn").addEventListener("click", () => {
     const phase = state.answers.meta.cyclePhase;
@@ -398,55 +389,20 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
 
   /* ---------------- Summary ---------------- */
 
-  function summarizeDetailValue(dv) {
-    if (dv === undefined || dv === "" || (Array.isArray(dv) && dv.length === 0)) return null;
-    return Array.isArray(dv) ? dv.map(T).join("、") : T(dv);
-  }
-
   function buildSummary() {
     const order = currentOrder();
     let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
     out += T("整體感覺||Overall mood") + "：" + (state.answers.meta.moodRating ? T(MOOD_WORDS[state.answers.meta.moodRating - 1]) : "") + "\n\n";
     order.forEach((secId) => {
-      const sec = SCHEMA[secId];
-      const ans = state.answers[secId];
-      const lines = [];
-      sec.fields.forEach((f) => {
-        const v = ans[f.id];
-        const other = ans[f.id + "__other"];
-        const hasValue = !(v === undefined || v === "" || (Array.isArray(v) && v.length === 0));
-        if (!hasValue && !other) return;
-        let line = T(f.label) + "：" + (hasValue ? (Array.isArray(v) ? v.map(T).join("、") : T(v)) : "");
-        const activeDetails = getActiveDetails(f, v);
-        if (activeDetails) {
-          const dparts = activeDetails.map((d) => {
-            const s = summarizeDetailValue(ans[f.id + "__" + d.id]);
-            return s ? (T(d.label) + "：" + s) : null;
-          }).filter(Boolean);
-          if (dparts.length) line += "（" + dparts.join("；") + "）";
-        }
-        if (f.type === "multi" && f.perItemSeverity) {
-          const sevParts = (v || []).filter((x) => !NONE_MARKERS.includes(x)).map((x) => {
-            const s = summarizeDetailValue(ans[f.id + "__sev__" + encodeURIComponent(x)]);
-            return s ? (T(x) + "程度：" + s) : null;
-          }).filter(Boolean);
-          if (sevParts.length) line += "（" + sevParts.join("；") + "）";
-        }
-        if (other) { line += (hasValue ? "；" : "") + "其他：" + other; }
-        lines.push(line);
-      });
-      if (lines.length) { out += T(sec.title) + "\n" + lines.join("\n") + "\n\n"; }
+      const lines = sectionLines(secId, state.answers[secId]);
+      if (lines.length) {
+        out += T(SCHEMA[secId].title) + "\n" + lines.map((l) => l.label + "：" + l.text).join("\n") + "\n\n";
+      }
     });
     return out.trim() + "\n";
   }
 
   /* ---------------- Storage ---------------- */
-
-  function shiftDate(dateStr, delta) {
-    const d = new Date(dateStr + "T00:00:00");
-    d.setDate(d.getDate() + delta);
-    return d.toISOString().slice(0, 10);
-  }
 
   function summarizePrevDayBowel(g) {
     const v = g.prevDayBowelMovement;
@@ -495,13 +451,16 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   }
 
   async function loadDate(dateStr) {
+    // Save the day being left first. A pending autosave fires against whatever
+    // state.date is when its timer runs, so switching days mid-debounce would
+    // otherwise drop the last edits of the previous day.
+    flushAutoSave();
     state.date = dateStr;
     state.done = new Set();
     try {
       const data = await getEntry(dateStr);
       if (data) {
-        state.answers = data.answers || blankAnswers();
-        if (!state.answers.meta) state.answers.meta = {};
+        state.answers = withAllSections(data.answers);
         state.done = new Set(data.done || []);
       } else {
         state.answers = blankAnswers();
@@ -550,7 +509,18 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
     if (state.dirty) saveCurrent();
   }
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushAutoSave(); });
+  // An app left open overnight must not keep logging into yesterday: when it
+  // comes back on screen after midnight, today's page follows the new day.
+  // A past day opened on purpose stays put.
+  let lastSeenToday = todayStr();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { flushAutoSave(); return; }
+    const today = todayStr();
+    if (today !== lastSeenToday) {
+      if (state.date === lastSeenToday) loadDate(today);
+      lastSeenToday = today;
+    }
+  });
   window.addEventListener("pagehide", flushAutoSave);
 
   $("#laterBtn").addEventListener("click", () => { saveCurrent(); });
@@ -594,5 +564,6 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
 
   return {
     refreshLang: () => renderApp(),
+    openDate: (dateStr) => loadDate(dateStr),
   };
 }

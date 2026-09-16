@@ -1,13 +1,16 @@
 // Minimal app-shell cache so the log stays usable offline. Data lives in
 // IndexedDB (db.js), never in this cache — the service worker only caches
 // static app files so the UI itself can load with no network.
-const CACHE = "tcm-app-shell-v3";
+const CACHE = "tcm-app-shell-v4";
 const SHELL_FILES = [
   "./",
   "./index.html",
   "./css/style.css",
   "./js/app.js",
   "./js/daily-log.js",
+  "./js/calendar.js",
+  "./js/summary.js",
+  "./js/dates.js",
   "./js/db.js",
   "./js/sync.js",
   "./js/schema.js",
@@ -34,8 +37,14 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return; // never intercept the GitHub API
+  // "no-cache" revalidates against the server instead of trusting the browser's
+  // HTTP cache (GitHub Pages sends max-age=600), so a deploy can't leave the
+  // app running a mix of new and ten-minute-old modules.
+  const request = event.request.mode === "navigate"
+    ? event.request
+    : new Request(event.request, { cache: "no-cache" });
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((res) => {
         if (res.ok) {
           const copy = res.clone();

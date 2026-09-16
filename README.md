@@ -23,6 +23,9 @@ app/web/            the real app (deployed)
 ├── js/
 │   ├── schema.js    11-section question schema — edit questions here, not the UI
 │   ├── daily-log.js the daily-log screen
+│   ├── calendar.js  history: month calendar + read-only day preview
+│   ├── summary.js   entry → readable lines (preview and Run analysis share it)
+│   ├── dates.js     local-day date helpers — never toISOString() for a day
 │   ├── db.js        IndexedDB — the primary store
 │   ├── sync.js      GitHub mirror: user-data/<id>/<date>.json
 │   ├── i18n.js      T("中文||English")

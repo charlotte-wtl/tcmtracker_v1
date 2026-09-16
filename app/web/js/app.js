@@ -1,5 +1,6 @@
 import { T, getLang, setLang } from "./i18n.js";
 import { mountDailyLog } from "./daily-log.js";
+import { mountCalendar } from "./calendar.js";
 import {
   getConfig, setConfig, testConnection, syncAllPending, getUserId, setUserId, normalizeUserId,
   setToken, purgeStoredToken, configState,
@@ -76,11 +77,17 @@ function renderNav() {
   `).join("");
 }
 
+let dailyLog = null;
+let calendar = null;
+
 function showScreen(id) {
   activeScreen = id;
   Object.keys(screens).forEach((key) => { screens[key].hidden = key !== id; });
   renderNav();
   window.location.hash = `#/${id}`;
+  window.scrollTo(0, 0);
+  // Re-read on every visit so days logged or edited since show their dots.
+  if (id === "history" && calendar) calendar.refresh();
 }
 
 navInner.addEventListener("click", (e) => {
@@ -149,10 +156,6 @@ function renderChat() {
 function renderHome() {
   renderPlaceholder(screens.home, "首頁||Home",
     "首頁（週期日、下次經期預估、目前體質）將在下一階段建置。目前請從下方導覽列前往「日誌」開始記錄。||Home (cycle day, next-period estimate, current condition) is built in a later phase. Use \"Daily log\" below to start today's entry.");
-}
-function renderHistory() {
-  renderPlaceholder(screens.history, "紀錄||History",
-    "日曆檢視（可回顧、編輯任何過去日子）將在下一階段建置。||The calendar view — jump to and edit any past day — is built in a later phase.");
 }
 
 /* ---------------- Profile / GitHub settings ---------------- */
@@ -317,13 +320,20 @@ initFromHash();
 renderChrome();
 renderChat();
 renderHome();
-renderHistory();
 renderProfile();
 Object.keys(screens).forEach((key) => { screens[key].hidden = key !== activeScreen; });
 
-mountDailyLog(screens.log, {
+dailyLog = mountDailyLog(screens.log, {
   onSaveStatus: renderSaveStatus,
   onSyncStatus: renderSyncStatus,
+});
+
+calendar = mountCalendar(screens.history, {
+  onEditDay: (dateStr) => {
+    dailyLog.openDate(dateStr);
+    showScreen("log");
+    window.scrollTo(0, 0);
+  },
 });
 
 // Earlier versions persisted the token to IndexedDB. Remove any such token on

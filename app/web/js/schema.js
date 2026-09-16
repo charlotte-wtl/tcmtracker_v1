@@ -179,6 +179,14 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
+  regularday: {
+    title: "9. 平日觀察||9. Regular day",
+    condition: p => p === "平日||Regular day",
+    fields: [
+      { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
+        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] }
+    ]
+  },
   preperiod: {
     title: "9. 經前狀態||9. Pre-period",
     condition: p => p === "經前||Pre-period",
@@ -244,7 +252,7 @@ export const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期
 export const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
 
 export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet"];
-export const CONDITIONAL = ["preperiod","period","postperiod"];
+export const CONDITIONAL = ["regularday","preperiod","period","postperiod"];
 
 export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 
@@ -252,5 +260,5 @@ export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 export const SECTION_COLORS = {
   sleep:"mauve", morning:"ochre", tongue:"clay", general:"slate",
   organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose",
-  preperiod:"rose", period:"clay", postperiod:"moss"
+  regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
 };
