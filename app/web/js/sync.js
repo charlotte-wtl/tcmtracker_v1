@@ -4,9 +4,7 @@
 // module is ever called. If this fails (offline, bad token, repo unreachable)
 // the entry stays exactly as saved locally and is retried later.
 
-import { getMeta, setMeta, deleteMeta, putEntry, getUnsyncedEntries, getAllEntries } from "./db.js";
-import { buildUserMarkdown } from "./markdown.js";
-import { getLang } from "./i18n.js";
+import { getMeta, setMeta, deleteMeta, putEntry, getUnsyncedEntries } from "./db.js";
 
 // Non-secret settings persist on the device. The access token deliberately
 // does NOT: it lives in sessionStorage, so it is gone when the tab closes and
@@ -70,7 +68,7 @@ export async function configState() {
 /* ---------------- User identity ----------------
    A "user" here is whoever set this device up — there is no account system by
    design (PRD §6: no email, nothing tying an id to a real identity). The id is
-   claimed once, then fixed for this device, and namespaces everything written
+   set once per device (never auto-assigned), and namespaces everything written
    to the repo so a second person using their own device never collides with
    or overwrites the first. */
 
@@ -82,41 +80,15 @@ export async function setUserId(id) {
   return await setMeta("user_id", id);
 }
 
-function nextUserId(existingNames) {
-  let max = 0;
-  existingNames.forEach((name) => {
-    const m = /^u(\d+)/.exec(name);
-    if (m) max = Math.max(max, parseInt(m[1], 10));
-  });
-  return "u" + String(max + 1).padStart(3, "0");
-}
-
-// Reads what user folders/files already exist in the repo and claims the next
-// free uNNN. Never renumbers an id this device already holds.
-export async function claimUserId() {
-  const existing = await getUserId();
-  if (existing) return { ok: true, userId: existing, claimed: false };
-
-  const cfg = await getConfig();
-  if (!cfg.gh_token || !cfg.gh_owner || !cfg.gh_repo) {
-    return { ok: false, error: "not-configured" };
-  }
-  try {
-    const dir = cfg.gh_path_prefix.replace(/\/$/, "");
-    const res = await githubRequest(cfg, dir);
-    let names = [];
-    if (res.status === 200) {
-      const body = await res.json();
-      if (Array.isArray(body)) names = body.map((f) => f.name);
-    } else if (res.status !== 404) {
-      return { ok: false, error: `github-${res.status}` };
-    }
-    const userId = nextUserId(names);
-    await setUserId(userId);
-    return { ok: true, userId, claimed: true, sawExisting: names };
-  } catch (e) {
-    return { ok: false, error: e && e.message === "Failed to fetch" ? "offline" : String(e) };
-  }
+// Accepts the legacy uNNN ids and the newer style (e.g. TL6-668, K7M3-9QXD).
+// New-style ids are case-insensitive and stored uppercase; legacy ids keep
+// their lowercase "u" so they still match their existing folder.
+export function normalizeUserId(raw) {
+  const id = String(raw || "").trim();
+  if (/^u\d{3,}$/i.test(id)) return id.toLowerCase();
+  const upper = id.toUpperCase();
+  if (/^[A-Z0-9]+(-[A-Z0-9]+)*$/.test(upper) && upper.length >= 3 && upper.length <= 20) return upper;
+  return null;
 }
 
 function utf8ToBase64(str) {
@@ -172,40 +144,22 @@ async function putFile(cfg, path, text, message) {
 }
 
 // Structured per-day record: <prefix><userId>/<date>.json. This is the app's
-// own source of truth for reloading and editing a past day — the markdown
-// below is a rendering of it, not the other way round.
+// own source of truth for reloading and editing a past day.
 export async function pushEntry(entry) {
   const cfg = await getConfig();
   if (!cfg.gh_token || !cfg.gh_owner || !cfg.gh_repo) {
     return { ok: false, error: "not-configured" };
   }
-  const claim = await claimUserId();
-  if (!claim.ok) return { ok: false, error: claim.error };
-  const userId = claim.userId;
+  // Never auto-claim here: a device that silently took the next free id is how
+  // one person's log got split across u001/u002/u003. No id, no push — the
+  // entry stays safe in IndexedDB until the user sets their id.
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "no-user-id" };
   return putFile(
     cfg,
     `${cfg.gh_path_prefix}${userId}/${entry.date}.json`,
     JSON.stringify({ userId, ...entry }, null, 2),
     `${userId}: update ${entry.date}`
-  );
-}
-
-// Human/skill-readable rolling log: <prefix><userId>_daily_log.md, rebuilt
-// from every entry this device holds.
-export async function pushUserMarkdown() {
-  const cfg = await getConfig();
-  if (!cfg.gh_token || !cfg.gh_owner || !cfg.gh_repo) {
-    return { ok: false, error: "not-configured" };
-  }
-  const userId = await getUserId();
-  if (!userId) return { ok: false, error: "no-user-id" };
-  const entries = await getAllEntries();
-  if (!entries.length) return { ok: true };
-  return putFile(
-    cfg,
-    `${cfg.gh_path_prefix}${userId}_daily_log.md`,
-    buildUserMarkdown(entries, userId, getLang()),
-    `${userId}: rebuild daily log`
   );
 }
 
@@ -228,21 +182,6 @@ export async function testConnection() {
   }
 }
 
-// The markdown is a full rebuild of every entry, so it is pushed on a longer
-// leash than the per-day JSON — otherwise a minute of typing would rewrite the
-// whole log file dozens of times.
-let markdownTimer = null;
-function scheduleMarkdownPush(onStatus) {
-  if (markdownTimer) clearTimeout(markdownTimer);
-  markdownTimer = setTimeout(async () => {
-    markdownTimer = null;
-    const result = await pushUserMarkdown();
-    if (!result.ok && onStatus && result.error !== "not-configured" && result.error !== "no-user-id") {
-      onStatus("error", result.error);
-    }
-  }, 8000);
-}
-
 // Syncs one entry and records the result back into IndexedDB, then reports
 // status via onStatus (used by the UI's sync indicator).
 export async function syncEntry(entry, onStatus) {
@@ -254,8 +193,11 @@ export async function syncEntry(entry, onStatus) {
     syncError: result.ok ? null : result.error,
   };
   await putEntry(updated);
-  if (onStatus) onStatus(result.ok ? "synced" : "error", result.error);
-  if (result.ok) scheduleMarkdownPush(onStatus);
+  if (onStatus) {
+    if (result.ok) onStatus("synced");
+    else if (result.error === "no-user-id") onStatus("no-user-id");
+    else onStatus("error", result.error);
+  }
   return result;
 }
 
@@ -264,6 +206,10 @@ export async function syncAllPending(onStatus) {
   const state = await configState();
   if (state !== "ready") {
     if (onStatus) onStatus(state);
+    return;
+  }
+  if (!(await getUserId())) {
+    if (onStatus) onStatus("no-user-id");
     return;
   }
   const pending = await getUnsyncedEntries();

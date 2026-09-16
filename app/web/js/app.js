@@ -1,7 +1,7 @@
 import { T, getLang, setLang } from "./i18n.js";
 import { mountDailyLog } from "./daily-log.js";
 import {
-  getConfig, setConfig, testConnection, syncAllPending, getUserId, setUserId, claimUserId,
+  getConfig, setConfig, testConnection, syncAllPending, getUserId, setUserId, normalizeUserId,
   setToken, purgeStoredToken, configState,
 } from "./sync.js";
 
@@ -115,6 +115,7 @@ const SYNC_LABELS = {
   error: "尚未同步至雲端||Not synced to cloud",
   "not-configured": "未設定 GitHub||GitHub not set up",
   "needs-token": "需要重新輸入 token||Token needed this session",
+  "no-user-id": "尚未設定使用者編號||User ID not set",
 };
 
 let lastSaveState = "saved";
@@ -199,14 +200,13 @@ async function renderProfile() {
 
     <div class="card settings-form">
       <h2 style="font-size:1rem;margin-bottom:4px;">${T("使用者編號||User ID")}</h2>
-      <p class="settings-hint">${T("這台裝置的紀錄會存到 user-data/&lt;編號&gt;/ 並產生 &lt;編號&gt;_daily_log.md。若你已有既有紀錄（例如 u001），請直接填入該編號；留空則第一次同步時自動取用下一個未使用的編號。||This device's entries are written to user-data/&lt;id&gt;/ and rendered into &lt;id&gt;_daily_log.md. If you already have a log (e.g. u001), enter that id. Leave blank and the next unused id is claimed automatically on first sync.")}</p>
+      <p class="settings-hint">${T("這台裝置的紀錄會存到 user-data/&lt;編號&gt;/。請填入你的編號（例如 TL6-668）；未設定編號前，紀錄只會存在這台裝置，不會上傳。||This device's entries are written to user-data/&lt;id&gt;/. Enter your id (e.g. TL6-668). Until an id is set, entries stay on this device and are not uploaded.")}</p>
 
       <label for="userIdInput">${T("編號||ID")}</label>
-      <input type="text" id="userIdInput" placeholder="u001" value="${userId || ""}">
+      <input type="text" id="userIdInput" placeholder="TL6-668" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${userId || ""}">
 
       <div class="btnrow">
         <button class="btn accent" id="userIdSaveBtn">${T("儲存編號||Save ID")}</button>
-        <button class="btn" id="userIdClaimBtn">${T("自動取號||Auto-assign")}</button>
       </div>
       <div class="settings-status" id="userIdStatus"></div>
     </div>
@@ -229,7 +229,7 @@ async function renderProfile() {
       gh_owner: screens.profile.querySelector("#ghOwner").value.trim(),
       gh_repo: screens.profile.querySelector("#ghRepo").value.trim(),
       gh_branch: screens.profile.querySelector("#ghBranch").value.trim() || "main",
-      gh_path_prefix: screens.profile.querySelector("#ghPrefix").value.trim() || "entries/",
+      gh_path_prefix: screens.profile.querySelector("#ghPrefix").value.trim() || "user-data/",
     };
     await setConfig(values);
     return values;
@@ -293,27 +293,17 @@ async function renderProfile() {
   }
 
   screens.profile.querySelector("#userIdSaveBtn").addEventListener("click", async () => {
-    const raw = screens.profile.querySelector("#userIdInput").value.trim();
-    if (!/^u\d{3,}$/.test(raw)) {
-      showUserIdStatus(false, T("編號格式需為 u 加三位數字，例如 u001。||ID must be u followed by at least three digits, e.g. u001."));
+    const id = normalizeUserId(screens.profile.querySelector("#userIdInput").value);
+    if (!id) {
+      showUserIdStatus(false, T("編號只能包含英文字母、數字和連字號，例如 TL6-668。||ID can only contain letters, numbers and hyphens, e.g. TL6-668."));
       return;
     }
-    await setUserId(raw);
-    showUserIdStatus(true, T("已儲存編號：||Saved ID: ") + raw);
+    await setUserId(id);
+    screens.profile.querySelector("#userIdInput").value = id;
+    showUserIdStatus(true, T("已儲存編號：||Saved ID: ") + id);
+    syncAllPending(renderSyncStatus);
   });
 
-  screens.profile.querySelector("#userIdClaimBtn").addEventListener("click", async () => {
-    await saveFormValues();
-    const result = await claimUserId();
-    if (!result.ok) {
-      showUserIdStatus(false, T("無法取號：||Could not assign: ") + result.error);
-      return;
-    }
-    screens.profile.querySelector("#userIdInput").value = result.userId;
-    showUserIdStatus(true, result.claimed
-      ? T("已取得新編號：||Claimed new ID: ") + result.userId
-      : T("這台裝置已有編號：||This device already has an ID: ") + result.userId);
-  });
 }
 
 /* ---------------- Boot ---------------- */

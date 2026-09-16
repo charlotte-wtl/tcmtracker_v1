@@ -24,8 +24,7 @@ app/web/            the real app (deployed)
 │   ├── schema.js    11-section question schema — edit questions here, not the UI
 │   ├── daily-log.js the daily-log screen
 │   ├── db.js        IndexedDB — the primary store
-│   ├── sync.js      GitHub mirror + per-user ids
-│   ├── markdown.js  renders entries to uNNN_daily_log.md
+│   ├── sync.js      GitHub mirror: user-data/<id>/<date>.json
 │   ├── i18n.js      T("中文||English")
 │   └── app.js       shell: nav, status strip, profile
 └── sw.js           app-shell offline cache (network-first)
