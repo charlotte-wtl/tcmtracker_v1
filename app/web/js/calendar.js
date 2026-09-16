@@ -5,6 +5,8 @@
 
 import { T, getLang } from "./i18n.js";
 import { SECTION_COLORS } from "./schema.js";
+
+const PERIOD_PHASE = "經期||Period";
 import { getAllEntries, getEntry } from "./db.js";
 import { todayStr, parseDateStr, localDateStr } from "./dates.js";
 import { entryHasData, summarizeEntry } from "./summary.js";
@@ -37,6 +39,7 @@ export function mountCalendar(root, { onEditDay }) {
     month: t.getMonth(),
     selected: today,
     withData: new Set(),
+    periodDays: new Set(),
   };
 
   root.innerHTML = `
@@ -48,7 +51,10 @@ export function mountCalendar(root, { onEditDay }) {
       </div>
       <div class="cal-grid" id="calGrid"></div>
       <div class="cal-foot">
-        <span class="cal-legend"><span class="cal-dot"></span><span id="calLegend"></span></span>
+        <span class="cal-legends">
+          <span class="cal-legend"><span class="cal-dot"></span><span id="calLegend"></span></span>
+          <span class="cal-legend"><span class="cal-swatch"></span><span id="calPeriodLegend"></span></span>
+        </span>
         <button type="button" class="btn ghost" id="calTodayBtn"></button>
       </div>
     </div>
@@ -65,6 +71,7 @@ export function mountCalendar(root, { onEditDay }) {
     const { year, month } = state;
     $("#calTitle").textContent = monthTitle(year, month);
     $("#calLegend").textContent = T("有紀錄可回顧||Has an entry to review");
+    $("#calPeriodLegend").textContent = T("經期||Period");
     $("#calTodayBtn").textContent = T("今天||Today");
 
     const [prevBtn, nextBtn] = root.querySelectorAll(".cal-nav");
@@ -81,11 +88,15 @@ export function mountCalendar(root, { onEditDay }) {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = localDateStr(new Date(year, month, day));
       const has = state.withData.has(dateStr);
+      const period = state.periodDays.has(dateStr);
       const classes = ["cal-day"];
       if (dateStr === today) classes.push("is-today");
       if (dateStr === state.selected) classes.push("is-selected");
       if (has) classes.push("has-entry");
-      const label = longDate(dateStr) + (has ? "，" + T("有紀錄||has an entry") : "");
+      if (period) classes.push("is-period");
+      const label = longDate(dateStr)
+        + (period ? "，" + T("經期||period") : "")
+        + (has ? "，" + T("有紀錄||has an entry") : "");
       html += `<button type="button" class="${classes.join(" ")}" data-date="${dateStr}"
         aria-label="${esc(label)}" aria-pressed="${dateStr === state.selected}"${dateStr > today ? " disabled" : ""}>
         <span class="cal-num">${day}</span><span class="cal-dot"></span>
@@ -143,6 +154,11 @@ export function mountCalendar(root, { onEditDay }) {
     t = parseDateStr(today);
     const entries = await getAllEntries().catch(() => []);
     state.withData = new Set(entries.filter(entryHasData).map((e) => e.date));
+    // For now a period day is a day whose log says 經期. Imported and one-tap
+    // period records (cycle.json) will be added to this set in the cycle step.
+    state.periodDays = new Set(entries
+      .filter((e) => e.answers && e.answers.meta && e.answers.meta.cyclePhase === PERIOD_PHASE)
+      .map((e) => e.date));
     renderGrid();
     renderPreview();
   }

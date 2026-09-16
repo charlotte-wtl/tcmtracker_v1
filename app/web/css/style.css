@@ -290,10 +290,14 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .cal-day.has-entry .cal-dot, .cal-legend .cal-dot { background: var(--accent); }
 .cal-day.is-today .cal-num { font-weight: 600; }
 .cal-day.is-today { border-color: var(--line-strong); }
+.cal-day.is-period { background: color-mix(in srgb, var(--tone-rose) 30%, transparent); }
 .cal-day.is-selected { background: var(--surface-2); border-color: var(--accent); }
+.cal-day.is-period.is-selected { background: color-mix(in srgb, var(--tone-rose) 30%, transparent); }
 .cal-day:disabled { color: var(--line-strong); }
 @media (hover: hover) { .cal-day:not(:disabled):not(.is-selected):hover { background: var(--surface-2); } }
 .cal-foot { display: flex; align-items: center; justify-content: space-between; padding: 12px 4px 0; margin-top: 8px; border-top: 1px solid var(--line); }
+.cal-legends { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.cal-swatch { width: 14px; height: 10px; border-radius: 4px; background: color-mix(in srgb, var(--tone-rose) 30%, transparent); }
 .cal-legend { display: inline-flex; align-items: center; gap: 8px; font-size: 0.74rem; color: var(--ink-soft); }
 .cal-foot .btn { padding: 6px 10px; }
 

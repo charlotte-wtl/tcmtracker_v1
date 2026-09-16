@@ -84,7 +84,7 @@ export const SCHEMA = {
       { id:"sweat", type:"multi", label:"汗||Sweating",
         options:["無異常||None","自汗||Spontaneous (daytime)","盜汗||Night sweats","手心腳心易汗||Sweaty palms/soles","該熱不出汗，反而面赤||Heat response without perspiring, flushing instead"] },
       { id:"thirst", type:"single", label:"口渴||Thirst",
-        options:["不渴||Not thirsty","渴喜熱飲||Prefers warm","渴喜冷飲||Prefers cold","渴但喝不多||Thirsty but doesn't drink much"] },
+        options:["不渴||Not thirsty","渴喜熱飲||Prefers warm","渴喜冷飲||Prefers cold","渴但喝不多||Thirsty but doesn't drink much","渴亦喝得多||Thirsty and drinks a lot"] },
       { id:"appetite", type:"multi", label:"食慾||Appetite",
         options:["正常||Normal","食慾不振||Poor","多食易飢||Easily hungry","食後腹脹||Bloating after eating"] },
       { id:"giSymptoms", type:"multi", label:"腸胃症狀||GI symptoms",
@@ -184,7 +184,9 @@ export const SCHEMA = {
     condition: p => p === "平日||Regular day",
     fields: [
       { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
-        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] }
+        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
+      { id:"spotting", type:"yesno", label:"點滴出血||Spotting", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] }
     ]
   },
   preperiod: {
@@ -203,6 +205,8 @@ export const SCHEMA = {
         options:["無||None","長痘||Breakouts","出油增加||Oilier","泛紅刺激||Irritated","脫皮||Flaky"] },
       { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
         options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
+      { id:"spotting", type:"yesno", label:"點滴出血||Spotting", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] },
       { id:"notes", type:"text", multiline:true, label:"睡眠或食慾變化／其他||Sleep or appetite changes / other" }
     ]
   },
@@ -224,8 +228,6 @@ export const SCHEMA = {
         detailsTrigger:"any", details:[{ id:"sev", type:"single", label:"程度||Severity", options:["輕度||Mild","中度||Moderate","強烈||Severe","無法忍受||Unbearable"] }] },
       { id:"backache", type:"yesno", label:"腰痠||Back soreness", options:YESNO,
         detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
-      { id:"spotting", type:"yesno", label:"點滴出血（非經期間）||Spotting (non-period)", options:YESNO,
-        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] },
       { id:"symptoms", type:"multi", label:"伴隨症狀||Accompanying symptoms",
         options:["畏寒||Chills","噁心嘔吐||Nausea/vomiting","頭痛||Headache","乳房脹痛持續||Persistent breast pain","腹瀉||Diarrhoea","疲憊嗜睡||Fatigue","腦霧||Brain fog","潮熱||Hot flashes"] },
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
