@@ -1,10 +1,10 @@
 import { T, getLang, setLang } from "./i18n.js";
 import { mountDailyLog } from "./daily-log.js";
 import { mountCalendar } from "./calendar.js";
-import {
-  getConfig, setConfig, testConnection, syncAllPending, getUserId, setUserId, normalizeUserId,
-  setToken, purgeStoredToken, configState,
-} from "./sync.js";
+import { mountHome } from "./home.js";
+import { mountProfile } from "./profile.js";
+import { openConnect, offlineThisSession } from "./connect.js";
+import { purgeStoredToken, configState, pullRecent, setStatusListener } from "./sync.js";
 
 const NAV_ITEMS = [
   { id: "history", label: "紀錄||History", icon: iconHistory },
@@ -79,6 +79,7 @@ function renderNav() {
 
 let dailyLog = null;
 let calendar = null;
+let home = null;
 
 function showScreen(id) {
   activeScreen = id;
@@ -88,6 +89,7 @@ function showScreen(id) {
   window.scrollTo(0, 0);
   // Re-read on every visit so days logged or edited since show their dots.
   if (id === "history" && calendar) calendar.refresh();
+  if (id === "home" && home) home.refresh();
 }
 
 navInner.addEventListener("click", (e) => {
@@ -122,7 +124,11 @@ const SYNC_LABELS = {
   error: "尚未同步至雲端||Not synced to cloud",
   "not-configured": "未設定 GitHub||GitHub not set up",
   "needs-token": "需要重新輸入 token||Token needed this session",
-  "no-user-id": "尚未設定使用者編號||User ID not set",
+  "no-user-id": "尚未連線編號||No user ID connected",
+  ready: "已連線||Connected",
+  pulling: "正在更新||Updating",
+  merged: "已合併其他裝置的更新||Merged changes from another device",
+  offline: "離線中，連上網路後同步||Offline — will sync when back online",
 };
 
 let lastSaveState = "saved";
@@ -153,162 +159,6 @@ function renderChat() {
   renderPlaceholder(screens.chat, "聊天||Chat",
     "之後會在這裡與分析結果延伸對話。目前請繼續使用你原本的分析對話。||In-app chat with your analysis results lands in a later phase. For now, keep using your existing analysis conversation.");
 }
-function renderHome() {
-  renderPlaceholder(screens.home, "首頁||Home",
-    "首頁（週期日、下次經期預估、目前體質）將在下一階段建置。目前請從下方導覽列前往「日誌」開始記錄。||Home (cycle day, next-period estimate, current condition) is built in a later phase. Use \"Daily log\" below to start today's entry.");
-}
-
-/* ---------------- Profile / GitHub settings ---------------- */
-
-async function renderProfile() {
-  const cfg = await getConfig();
-  const userId = await getUserId();
-  screens.profile.innerHTML = `
-    <div class="placeholder-screen" style="padding-top:36px;">
-      <h1 class="display">${T("個人||Profile")}</h1>
-      <p>${T("使用者類型、病歷匯入等功能將在下一階段建置。以下為雲端同步設定。||User type and history import land in a later phase. GitHub sync setup is below.")}</p>
-    </div>
-    <div class="card settings-form">
-      <h2 style="font-size:1rem;margin-bottom:4px;">${T("GitHub 雲端同步||GitHub sync")}</h2>
-      <p class="settings-hint">${T("需要一個有 repo 權限的 GitHub personal access token，僅用於寫入你自己指定的私人倉庫。||Needs a GitHub personal access token with repo access, used only to write to a private repo you specify.")}</p>
-
-      <!-- A real <form> with a username field ahead of the password field is
-           what lets iCloud Keychain / Apple Passwords offer to save and
-           autofill the token. The app still never persists it itself. -->
-      <form id="ghForm" autocomplete="on">
-        <label for="ghOwner">${T("GitHub 帳號||GitHub owner")}</label>
-        <input type="text" id="ghOwner" name="username" autocomplete="username" value="${cfg.gh_owner || "charlotte-wtl"}">
-
-        <label for="ghRepo">${T("倉庫名稱||Repository name")}</label>
-        <input type="text" id="ghRepo" value="${cfg.gh_repo || "personal_tcm_daily_log"}">
-
-        <label for="ghBranch">${T("分支||Branch")}</label>
-        <input type="text" id="ghBranch" value="${cfg.gh_branch || "main"}">
-
-        <label for="ghPrefix">${T("路徑前綴||Path prefix")}</label>
-        <input type="text" id="ghPrefix" value="${cfg.gh_path_prefix || "user-data/"}">
-
-        <label for="ghToken">${T("Personal access token||Personal access token")}</label>
-        <input type="password" id="ghToken" name="password" autocomplete="current-password" spellcheck="false" placeholder="github_pat_..." value="${cfg.gh_token || ""}">
-        <p class="settings-hint">${T("此 token 不會存到裝置上，關閉分頁即清除。可讓 Apple 密碼／iCloud 鑰匙圈記住並自動填入 — 存在鑰匙圈而不是這個網站。||This token is never written to the device and is cleared when the tab closes. Let Apple Passwords / iCloud Keychain save and autofill it — stored in your keychain, not in this site.")}</p>
-
-        <div class="btnrow">
-          <button class="btn accent" type="submit" id="ghSaveBtn">${T("儲存||Save")}</button>
-          <button class="btn" type="button" id="ghTestBtn">${T("測試連線||Test connection")}</button>
-          <button class="btn ghost" type="button" id="ghForgetBtn">${T("清除 token||Forget token")}</button>
-        </div>
-      </form>
-      <div class="settings-status" id="ghStatus"></div>
-    </div>
-
-    <div class="card settings-form">
-      <h2 style="font-size:1rem;margin-bottom:4px;">${T("使用者編號||User ID")}</h2>
-      <p class="settings-hint">${T("這台裝置的紀錄會存到 user-data/&lt;編號&gt;/。請填入你的編號（例如 TL6-668）；未設定編號前，紀錄只會存在這台裝置，不會上傳。||This device's entries are written to user-data/&lt;id&gt;/. Enter your id (e.g. TL6-668). Until an id is set, entries stay on this device and are not uploaded.")}</p>
-
-      <label for="userIdInput">${T("編號||ID")}</label>
-      <input type="text" id="userIdInput" placeholder="TL6-668" autocapitalize="characters" autocorrect="off" spellcheck="false" value="${userId || ""}">
-
-      <div class="btnrow">
-        <button class="btn accent" id="userIdSaveBtn">${T("儲存編號||Save ID")}</button>
-      </div>
-      <div class="settings-status" id="userIdStatus"></div>
-    </div>
-  `;
-
-  const statusEl = screens.profile.querySelector("#ghStatus");
-  function showStatus(ok, text) {
-    statusEl.classList.add("show");
-    statusEl.classList.toggle("ok", ok);
-    statusEl.classList.toggle("error", !ok);
-    statusEl.textContent = text;
-  }
-
-  // Both buttons persist what is currently typed in the form first. Testing
-  // against a stale saved config (rather than what the user is looking at)
-  // reports "not-configured" for a form that looks complete.
-  async function saveFormValues() {
-    const values = {
-      gh_token: screens.profile.querySelector("#ghToken").value.trim(),
-      gh_owner: screens.profile.querySelector("#ghOwner").value.trim(),
-      gh_repo: screens.profile.querySelector("#ghRepo").value.trim(),
-      gh_branch: screens.profile.querySelector("#ghBranch").value.trim() || "main",
-      gh_path_prefix: screens.profile.querySelector("#ghPrefix").value.trim() || "user-data/",
-    };
-    await setConfig(values);
-    return values;
-  }
-
-  function missingFields(values) {
-    const missing = [];
-    if (!values.gh_token) missing.push(T("token||token"));
-    if (!values.gh_owner) missing.push(T("帳號||owner"));
-    if (!values.gh_repo) missing.push(T("倉庫名稱||repository name"));
-    return missing;
-  }
-
-  // Handled as a form submit (not a button click) so the browser treats it as
-  // a credential submission and the keychain offers to save the token.
-  screens.profile.querySelector("#ghForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const values = await saveFormValues();
-    const missing = missingFields(values);
-    if (missing.length) {
-      showStatus(false, T("已儲存，但還缺少：||Saved, but still missing: ") + missing.join(", "));
-    } else {
-      showStatus(true, T("已儲存。||Saved."));
-    }
-    syncAllPending(renderSyncStatus);
-  });
-
-  screens.profile.querySelector("#ghTestBtn").addEventListener("click", async () => {
-    const values = await saveFormValues();
-    const missing = missingFields(values);
-    if (missing.length) {
-      showStatus(false, T("尚未填寫：||Not filled in yet: ") + missing.join(", "));
-      return;
-    }
-    showStatus(true, T("測試中...||Testing..."));
-    const result = await testConnection();
-    if (result.ok) {
-      showStatus(true, T("連線成功。||Connected successfully."));
-      syncAllPending(renderSyncStatus);
-    } else if (result.error === "offline") {
-      showStatus(false, T("無法連線到 GitHub。如果這是發布的 Artifact，Artifact 不允許連外部網路 — 請改用 GitHub Pages。||Could not reach GitHub. If this is the published Artifact, Artifacts cannot call external networks — use GitHub Pages instead."));
-    } else {
-      showStatus(false, T("連線失敗：||Connection failed: ") + result.error);
-    }
-  });
-
-  screens.profile.querySelector("#ghForgetBtn").addEventListener("click", async () => {
-    setToken("");
-    await purgeStoredToken();
-    screens.profile.querySelector("#ghToken").value = "";
-    showStatus(true, T("已清除此分頁的 token。||Token cleared from this tab."));
-    renderSyncStatus(await configState());
-  });
-
-  const userIdStatusEl = screens.profile.querySelector("#userIdStatus");
-  function showUserIdStatus(ok, text) {
-    userIdStatusEl.classList.add("show");
-    userIdStatusEl.classList.toggle("ok", ok);
-    userIdStatusEl.classList.toggle("error", !ok);
-    userIdStatusEl.textContent = text;
-  }
-
-  screens.profile.querySelector("#userIdSaveBtn").addEventListener("click", async () => {
-    const id = normalizeUserId(screens.profile.querySelector("#userIdInput").value);
-    if (!id) {
-      showUserIdStatus(false, T("編號只能包含英文字母、數字和連字號，例如 TL6-668。||ID can only contain letters, numbers and hyphens, e.g. TL6-668."));
-      return;
-    }
-    await setUserId(id);
-    screens.profile.querySelector("#userIdInput").value = id;
-    showUserIdStatus(true, T("已儲存編號：||Saved ID: ") + id);
-    syncAllPending(renderSyncStatus);
-  });
-
-}
-
 /* ---------------- Boot ---------------- */
 
 function initFromHash() {
@@ -319,31 +169,56 @@ function initFromHash() {
 initFromHash();
 renderChrome();
 renderChat();
-renderHome();
-renderProfile();
 Object.keys(screens).forEach((key) => { screens[key].hidden = key !== activeScreen; });
 
-dailyLog = mountDailyLog(screens.log, {
-  onSaveStatus: renderSaveStatus,
-  onSyncStatus: renderSyncStatus,
+setStatusListener((state, detail) => {
+  renderSyncStatus(state === "error" && detail === "offline" ? "offline" : state);
 });
+
+dailyLog = mountDailyLog(screens.log, { onSaveStatus: renderSaveStatus });
 
 calendar = mountCalendar(screens.history, {
   onEditDay: (dateStr) => {
     dailyLog.openDate(dateStr);
     showScreen("log");
-    window.scrollTo(0, 0);
   },
 });
 
+home = mountHome(screens.home, { onOpenProfile: () => showScreen("profile") });
+
+async function connectAndSync(options) {
+  const connected = await openConnect(options);
+  window.dispatchEvent(new CustomEvent("tcm:connection-changed"));
+  renderSyncStatus(await configState());
+  if (connected) sync();
+}
+
+mountProfile(screens.profile, { onConnect: connectAndSync });
+
+// Download what other devices saved, then upload anything waiting here.
+let lastPull = 0;
+async function sync({ force = true } = {}) {
+  if (!force && Date.now() - lastPull < 20000) return;
+  if ((await configState()) !== "ready") { renderSyncStatus(await configState()); return; }
+  lastPull = Date.now();
+  await pullRecent();
+}
+
+// Coming back to the app (e.g. the phone tab left open since the morning)
+// must show the latest before you add to it.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") sync({ force: false });
+});
+window.addEventListener("online", () => sync());
+
 // Earlier versions persisted the token to IndexedDB. Remove any such token on
 // every startup so upgrading the app is enough to clear it.
-purgeStoredToken()
-  .then(() => configState())
-  .then(renderSyncStatus)
-  .then(() => syncAllPending(renderSyncStatus));
-
-window.addEventListener("online", () => syncAllPending(renderSyncStatus));
+purgeStoredToken().then(async () => {
+  const state = await configState();
+  renderSyncStatus(state);
+  if (state === "ready") sync();
+  else if (!offlineThisSession()) connectAndSync({ allowOffline: true });
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

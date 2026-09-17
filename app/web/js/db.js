@@ -90,3 +90,23 @@ export async function setMeta(key, value) {
     req.onerror = () => reject(req.error);
   });
 }
+
+export async function deleteEntry(date) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, ENTRIES_STORE, "readwrite").delete(date);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// Removes every day entry — used only when this device switches to a
+// different user id and has nothing left unsynced.
+export async function clearEntries() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, ENTRIES_STORE, "readwrite").clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}

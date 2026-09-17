@@ -1,18 +1,47 @@
-// Background best-effort sync of saved entries to a private GitHub repo, via
-// the Contents API. This is never a precondition for a save being "safe" —
-// db.js (IndexedDB) already made the entry durable on-device before this
-// module is ever called. If this fails (offline, bad token, repo unreachable)
-// the entry stays exactly as saved locally and is retried later.
+// Sync between this device (IndexedDB, always saved first) and the private
+// GitHub data repo, which holds the latest version for every device.
+//
+// Rules:
+// - Download before showing: on open, and whenever the app comes back on
+//   screen, fetch the folder listing, the last 14 days and cycle.json. Older
+//   days download when opened.
+// - Upload on every save, on top of the version last seen: each PUT carries
+//   the file's GitHub sha. If another device saved in between, GitHub refuses
+//   (409/422) instead of overwriting; we download, merge field by field
+//   (merge.js), and upload again.
+// - The token lives in sessionStorage only and is never written to disk.
 
-import { getMeta, setMeta, deleteMeta, putEntry, getUnsyncedEntries } from "./db.js";
+import {
+  getMeta, setMeta, deleteMeta, getEntry, putEntry, deleteEntry, getAllEntries, clearEntries,
+} from "./db.js";
+import { mergeEntries, mergeCycle, sameEntryContent } from "./merge.js";
+import { todayStr, shiftDate } from "./dates.js";
 
-// Non-secret settings persist on the device. The access token deliberately
-// does NOT: it lives in sessionStorage, so it is gone when the tab closes and
-// is never written to disk. This app is served from a public origin, where a
-// long-lived write-capable token sitting in durable storage is a standing
-// liability — the cost is re-entering it per session.
 const PERSISTED_KEYS = ["gh_owner", "gh_repo", "gh_branch", "gh_path_prefix"];
+const DEFAULTS = {
+  gh_owner: "charlotte-wtl",
+  gh_repo: "personal_tcm_daily_log",
+  gh_branch: "main",
+  gh_path_prefix: "user-data/",
+};
 const TOKEN_SESSION_KEY = "tcm_gh_token";
+const RECENT_DAYS = 14;
+const CYCLE_FILE = "cycle.json";
+const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.json$/;
+
+/* ---------------- Status + change events ---------------- */
+
+let statusListener = () => {};
+let lastState = "";
+export function setStatusListener(fn) { statusListener = fn || (() => {}); }
+function status(state, detail) { lastState = state; statusListener(state, detail); }
+
+function announce(dates, cycle = false) {
+  if (!dates.length && !cycle) return;
+  window.dispatchEvent(new CustomEvent("tcm:data-changed", { detail: { dates, cycle } }));
+}
+
+/* ---------------- Config ---------------- */
 
 export function getToken() {
   try { return sessionStorage.getItem(TOKEN_SESSION_KEY) || ""; } catch (e) { return ""; }
@@ -22,74 +51,39 @@ export function setToken(token) {
   try {
     if (token) sessionStorage.setItem(TOKEN_SESSION_KEY, token);
     else sessionStorage.removeItem(TOKEN_SESSION_KEY);
-  } catch (e) { /* private mode — token simply stays in memory for this page */ }
+  } catch (e) { /* private mode — nothing persisted, which is the point */ }
 }
 
 // Clears any token persisted by an earlier version of this app.
 export async function purgeStoredToken() {
-  const legacy = await getMeta("gh_token");
-  if (legacy !== undefined) {
-    await deleteMeta("gh_token");
-    return true;
-  }
-  return false;
+  if ((await getMeta("gh_token")) !== undefined) await deleteMeta("gh_token");
 }
 
 export async function getConfig() {
-  const entries = await Promise.all(PERSISTED_KEYS.map((k) => getMeta(k)));
+  const values = await Promise.all(PERSISTED_KEYS.map((k) => getMeta(k)));
   const cfg = {};
-  PERSISTED_KEYS.forEach((k, i) => { cfg[k] = entries[i]; });
+  PERSISTED_KEYS.forEach((k, i) => { cfg[k] = values[i] || DEFAULTS[k]; });
   cfg.gh_token = getToken();
-  cfg.gh_branch = cfg.gh_branch || "main";
-  cfg.gh_path_prefix = cfg.gh_path_prefix || "user-data/";
   return cfg;
 }
 
 export async function setConfig(partial) {
   if ("gh_token" in partial) setToken(partial.gh_token);
-  const persisted = Object.keys(partial).filter((k) => PERSISTED_KEYS.includes(k));
-  await Promise.all(persisted.map((k) => setMeta(k, partial[k])));
+  await Promise.all(PERSISTED_KEYS.filter((k) => k in partial).map((k) => setMeta(k, partial[k] || DEFAULTS[k])));
 }
 
-export async function isConfigured() {
-  const cfg = await getConfig();
-  return !!(cfg.gh_token && cfg.gh_owner && cfg.gh_repo);
-}
+export async function getUserId() { return await getMeta("user_id"); }
+export async function setUserId(id) { return await setMeta("user_id", id); }
 
-// Distinguishes "never set up" from "set up, but this session needs the token
-// re-entered" — otherwise the second case reads as a broken configuration.
 export async function configState() {
   const cfg = await getConfig();
   if (!cfg.gh_owner || !cfg.gh_repo) return "not-configured";
+  if (!(await getUserId())) return "no-user-id";
   if (!cfg.gh_token) return "needs-token";
   return "ready";
 }
 
-/* ---------------- User identity ----------------
-   A "user" here is whoever set this device up — there is no account system by
-   design (PRD §6: no email, nothing tying an id to a real identity). The id is
-   set once per device (never auto-assigned), and namespaces everything written
-   to the repo so a second person using their own device never collides with
-   or overwrites the first. */
-
-export async function getUserId() {
-  return await getMeta("user_id");
-}
-
-export async function setUserId(id) {
-  return await setMeta("user_id", id);
-}
-
-// Accepts the legacy uNNN ids and the newer style (e.g. TL6-668, K7M3-9QXD).
-// New-style ids are case-insensitive and stored uppercase; legacy ids keep
-// their lowercase "u" so they still match their existing folder.
-export function normalizeUserId(raw) {
-  const id = String(raw || "").trim();
-  if (/^u\d{3,}$/i.test(id)) return id.toLowerCase();
-  const upper = id.toUpperCase();
-  if (/^[A-Z0-9]+(-[A-Z0-9]+)*$/.test(upper) && upper.length >= 3 && upper.length <= 20) return upper;
-  return null;
-}
+/* ---------------- GitHub API ---------------- */
 
 function utf8ToBase64(str) {
   const bytes = new TextEncoder().encode(str);
@@ -98,122 +92,441 @@ function utf8ToBase64(str) {
   return btoa(binary);
 }
 
-function apiUrl(cfg, path) {
-  return `https://api.github.com/repos/${cfg.gh_owner}/${cfg.gh_repo}/contents/${path}`;
+function base64ToUtf8(b64) {
+  const binary = atob(b64.replace(/\s/g, ""));
+  return new TextDecoder().decode(Uint8Array.from(binary, (c) => c.charCodeAt(0)));
 }
 
-async function githubRequest(cfg, path, options = {}) {
-  const res = await fetch(apiUrl(cfg, path), {
+function networkError(e) {
+  return e && /Failed to fetch|NetworkError|Load failed/i.test(String(e.message || e)) ? "offline" : String(e.message || e);
+}
+
+async function gh(cfg, path, options = {}) {
+  return fetch(`https://api.github.com/repos/${cfg.gh_owner}/${cfg.gh_repo}/${path}`, {
+    // GitHub marks API responses cacheable for 60s; a stale folder listing
+    // would hide another device's save, so listings are never served from cache.
+    cache: "no-store",
     ...options,
     headers: {
       Authorization: `Bearer ${cfg.gh_token}`,
       Accept: "application/vnd.github+json",
-      "Content-Type": "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(options.headers || {}),
     },
   });
-  return res;
 }
 
-async function putFile(cfg, path, text, message) {
-  try {
-    let sha;
-    const getRes = await githubRequest(cfg, path);
-    if (getRes.status === 200) {
-      const body = await getRes.json();
-      sha = body.sha;
-    } else if (getRes.status !== 404) {
-      return { ok: false, error: `github-get-${getRes.status}` };
-    }
+function prefixDir(cfg) { return cfg.gh_path_prefix.replace(/\/+$/, ""); }
+function userPath(cfg, userId, name) { return `${prefixDir(cfg)}/${userId}/${name}`; }
 
-    const putRes = await githubRequest(cfg, path, {
-      method: "PUT",
-      body: JSON.stringify({
-        message,
-        content: utf8ToBase64(text),
-        branch: cfg.gh_branch,
-        ...(sha ? { sha } : {}),
-      }),
-    });
-    if (putRes.status === 200 || putRes.status === 201) return { ok: true };
-    const errBody = await putRes.json().catch(() => ({}));
-    return { ok: false, error: errBody.message || `github-put-${putRes.status}` };
-  } catch (e) {
-    return { ok: false, error: e && e.message === "Failed to fetch" ? "offline" : String(e) };
-  }
-}
-
-// Structured per-day record: <prefix><userId>/<date>.json. This is the app's
-// own source of truth for reloading and editing a past day.
-export async function pushEntry(entry) {
-  const cfg = await getConfig();
-  if (!cfg.gh_token || !cfg.gh_owner || !cfg.gh_repo) {
-    return { ok: false, error: "not-configured" };
-  }
-  // Never auto-claim here: a device that silently took the next free id is how
-  // one person's log got split across u001/u002/u003. No id, no push — the
-  // entry stays safe in IndexedDB until the user sets their id.
-  const userId = await getUserId();
-  if (!userId) return { ok: false, error: "no-user-id" };
-  return putFile(
-    cfg,
-    `${cfg.gh_path_prefix}${userId}/${entry.date}.json`,
-    JSON.stringify({ userId, ...entry }, null, 2),
-    `${userId}: update ${entry.date}`
-  );
-}
-
-// Tests the configured token/repo without writing anything.
-export async function testConnection() {
-  const cfg = await getConfig();
-  if (!cfg.gh_token || !cfg.gh_owner || !cfg.gh_repo) {
-    return { ok: false, error: "not-configured" };
-  }
+export async function testConnection(cfg) {
   try {
     const res = await fetch(`https://api.github.com/repos/${cfg.gh_owner}/${cfg.gh_repo}`, {
+      cache: "no-store",
       headers: { Authorization: `Bearer ${cfg.gh_token}`, Accept: "application/vnd.github+json" },
     });
     if (res.status === 200) return { ok: true };
-    if (res.status === 404) return { ok: false, error: "repo-not-found-or-no-access" };
     if (res.status === 401) return { ok: false, error: "bad-token" };
+    if (res.status === 404 || res.status === 403) return { ok: false, error: "repo-not-found-or-no-access" };
     return { ok: false, error: `github-${res.status}` };
   } catch (e) {
-    return { ok: false, error: e && e.message === "Failed to fetch" ? "offline" : String(e) };
+    return { ok: false, error: networkError(e) };
   }
 }
 
-// Syncs one entry and records the result back into IndexedDB, then reports
-// status via onStatus (used by the UI's sync indicator).
-export async function syncEntry(entry, onStatus) {
-  if (onStatus) onStatus("syncing");
-  const result = await pushEntry(entry);
-  const updated = {
-    ...entry,
-    syncedAt: result.ok ? Date.now() : entry.syncedAt || 0,
-    syncError: result.ok ? null : result.error,
-  };
-  await putEntry(updated);
-  if (onStatus) {
-    if (result.ok) onStatus("synced");
-    else if (result.error === "no-user-id") onStatus("no-user-id");
-    else onStatus("error", result.error);
-  }
-  return result;
+// { exists, files: { "2026-09-16.json": sha, "cycle.json": sha } }
+async function listUserFolder(cfg, userId) {
+  const res = await gh(cfg, `contents/${prefixDir(cfg)}?ref=${encodeURIComponent(cfg.gh_branch)}`);
+  if (res.status === 404) return { exists: false, files: {} };
+  if (!res.ok) throw new Error(`github-${res.status}`);
+  const folder = (await res.json()).find((f) => f.type === "dir" && f.name === userId);
+  if (!folder) return { exists: false, files: {} };
+  const treeRes = await gh(cfg, `git/trees/${folder.sha}`);
+  if (!treeRes.ok) throw new Error(`github-${treeRes.status}`);
+  const files = {};
+  (await treeRes.json()).tree.forEach((t) => { if (t.type === "blob") files[t.path] = t.sha; });
+  return { exists: true, files };
 }
 
-// Retries every entry whose local edits are newer than its last successful sync.
-export async function syncAllPending(onStatus) {
-  const state = await configState();
-  if (state !== "ready") {
-    if (onStatus) onStatus(state);
-    return;
+export async function userFolderExists(cfg, userId) {
+  return (await listUserFolder(cfg, userId)).exists;
+}
+
+async function readBlob(cfg, sha) {
+  // A blob never changes for a given sha, so this one may use the HTTP cache.
+  const res = await gh(cfg, `git/blobs/${sha}`, { cache: "default" });
+  if (!res.ok) throw new Error(`github-${res.status}`);
+  return JSON.parse(base64ToUtf8((await res.json()).content));
+}
+
+async function readFile(cfg, path) {
+  const res = await gh(cfg, `contents/${path}?ref=${encodeURIComponent(cfg.gh_branch)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`github-${res.status}`);
+  const body = await res.json();
+  return { sha: body.sha, data: JSON.parse(base64ToUtf8(body.content)) };
+}
+
+// Writes only on top of `sha` (or only if the file doesn't exist yet).
+// Returns { ok, sha } or { ok:false, conflict:true } when someone else wrote first.
+async function writeFile(cfg, path, data, sha, message) {
+  const res = await gh(cfg, `contents/${path}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      message,
+      content: utf8ToBase64(JSON.stringify(data, null, 2)),
+      branch: cfg.gh_branch,
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (res.status === 200 || res.status === 201) return { ok: true, sha: (await res.json()).content.sha };
+  if (res.status === 409 || res.status === 422) return { ok: false, conflict: true };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body.message || `github-${res.status}` };
+}
+
+/* ---------------- Remote index (what exists on GitHub) ---------------- */
+
+let remoteIndex = null; // { userId, files, fetchedAt }
+
+async function loadIndex() {
+  if (!remoteIndex) remoteIndex = (await getMeta("remote_index")) || null;
+  return remoteIndex;
+}
+
+export async function getRemoteDates() {
+  const index = await loadIndex();
+  const userId = await getUserId();
+  if (!index || index.userId !== userId) return new Set();
+  return new Set(Object.keys(index.files).map((n) => (DAY_FILE.exec(n) || [])[1]).filter(Boolean));
+}
+
+async function saveIndex(index) {
+  remoteIndex = index;
+  await setMeta("remote_index", index);
+}
+
+async function noteRemoteFile(name, sha, userId) {
+  const index = await loadIndex();
+  if (!index || index.userId !== userId) return;
+  index.files[name] = sha;
+  await setMeta("remote_index", index);
+}
+
+/* ---------------- Entries ---------------- */
+
+export function isDirty(record) {
+  return !!record && (record.updatedAt || 0) > (record.syncedAt || 0);
+}
+
+function remoteShape(entry, userId) {
+  const out = { userId, date: entry.date, answers: entry.answers, done: entry.done || [], updatedAt: entry.updatedAt };
+  if (entry.completedAt) out.completedAt = entry.completedAt;
+  if (entry.amended) out.amended = true;
+  return out;
+}
+
+// Brings one downloaded day into IndexedDB. Returns true if what the user sees changed.
+async function applyRemoteEntry(date, sha, remote, userId) {
+  const local = await getEntry(date);
+  if (local && local.remoteSha === sha && local.remoteUserId === userId) return false;
+  const base = { answers: remote.answers || {}, done: remote.done || [] };
+  const syncMeta = { remoteSha: sha, remoteUserId: userId, base };
+
+  if (!local || !isDirty(local)) {
+    const stamp = Math.max(remote.updatedAt || 0, local?.updatedAt || 0, 1);
+    await putEntry({
+      date,
+      answers: base.answers,
+      done: base.done,
+      completedAt: remote.completedAt,
+      amended: remote.amended,
+      updatedAt: stamp,
+      syncedAt: stamp,
+      ...syncMeta,
+    });
+    return !local || !sameEntryContent(local, remote);
   }
-  if (!(await getUserId())) {
-    if (onStatus) onStatus("no-user-id");
-    return;
+
+  // Unsynced local edits AND a newer remote version: merge, keep it dirty so
+  // the merged result gets uploaded.
+  const merged = mergeEntries(local.base || { answers: {}, done: [] }, local, remote);
+  await putEntry({
+    ...local,
+    answers: merged.answers,
+    done: merged.done,
+    completedAt: merged.completedAt,
+    amended: merged.amended,
+    updatedAt: Math.max(Date.now(), (local.syncedAt || 0) + 1),
+    ...syncMeta,
+  });
+  if (merged.conflicts) status("merged");
+  return !sameEntryContent(local, merged);
+}
+
+// Upload queue: one upload per file at a time, so rapid saves don't race each
+// other with the same sha.
+const queues = new Map();
+function enqueue(key, job) {
+  const prev = queues.get(key) || Promise.resolve();
+  const next = prev.catch(() => {}).then(job);
+  queues.set(key, next);
+  next.finally(() => {
+    if (queues.get(key) === next) queues.delete(key);
+    // The last upload finished and nothing reported a problem: all caught up.
+    if (!queues.size && lastState === "syncing") status("synced");
+  }).catch(() => {});
+  return next;
+}
+async function uploadsIdle() {
+  await Promise.all([...queues.values()].map((p) => p.catch(() => {})));
+}
+
+export function queuePush(date) {
+  return enqueue(`day:${date}`, () => pushDay(date));
+}
+
+async function pushDay(date) {
+  if ((await configState()) !== "ready") return { ok: false, error: "not-ready" };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const entry = await getEntry(date);
+    if (!entry || !isDirty(entry)) return { ok: true };
+    status("syncing");
+    const sha = entry.remoteUserId === userId ? entry.remoteSha : undefined;
+    let result;
+    try {
+      result = await writeFile(cfg, userPath(cfg, userId, `${date}.json`), remoteShape(entry, userId), sha, `${userId}: update ${date}`);
+    } catch (e) {
+      result = { ok: false, error: networkError(e) };
+    }
+
+    if (result.ok) {
+      // Mark synced only up to what was uploaded; edits made during the upload stay dirty.
+      const now = await getEntry(date);
+      await putEntry({
+        ...now,
+        remoteSha: result.sha,
+        remoteUserId: userId,
+        base: { answers: entry.answers, done: entry.done || [] },
+        syncedAt: entry.updatedAt,
+        syncError: null,
+      });
+      await noteRemoteFile(`${date}.json`, result.sha, userId);
+      status(isDirty(now) ? "syncing" : "synced");
+      return { ok: true };
+    }
+    if (!result.conflict) {
+      await putEntry({ ...entry, syncError: result.error });
+      status("error", result.error);
+      return result;
+    }
+    // Another device saved first: take its version, merge, try again.
+    try {
+      const remote = await readFile(cfg, userPath(cfg, userId, `${date}.json`));
+      if (remote) {
+        if (await applyRemoteEntry(date, remote.sha, remote.data, userId)) announce([date]);
+      } else {
+        const cur = await getEntry(date);
+        await putEntry({ ...cur, remoteSha: undefined });
+      }
+    } catch (e) {
+      status("error", networkError(e));
+      return { ok: false, error: networkError(e) };
+    }
   }
-  const pending = await getUnsyncedEntries();
-  for (const entry of pending) {
-    await syncEntry(entry, onStatus);
+  status("error", "conflict-retries");
+  return { ok: false, error: "conflict-retries" };
+}
+
+// Makes sure a day is on this device, downloading it if it only exists remotely.
+export async function fetchDay(date) {
+  const local = await getEntry(date);
+  if (local) return local;
+  if ((await configState()) !== "ready") return null;
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  const index = await loadIndex();
+  if (!index || index.userId !== userId) return null;
+  const sha = index.files[`${date}.json`];
+  if (!sha) return null;
+  try {
+    await applyRemoteEntry(date, sha, await readBlob(cfg, sha), userId);
+    return await getEntry(date);
+  } catch (e) {
+    return null;
+  }
+}
+
+/* ---------------- Cycle (cycle.json) ---------------- */
+
+export async function getCycle() {
+  return (await getMeta("cycle")) || { periods: [], spotting: [], updatedAt: 0, syncedAt: 0 };
+}
+
+export async function saveCycle(data) {
+  const cur = await getCycle();
+  const next = { ...cur, periods: data.periods, spotting: data.spotting || cur.spotting || [], updatedAt: Date.now() };
+  await setMeta("cycle", next);
+  announce([], true);
+  queueCyclePush();
+  return next;
+}
+
+export function queueCyclePush() {
+  return enqueue("cycle", pushCycle);
+}
+
+async function pushCycle() {
+  if ((await configState()) !== "ready") return { ok: false, error: "not-ready" };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cycle = await getCycle();
+    if (!isDirty(cycle)) return { ok: true };
+    status("syncing");
+    const sha = cycle.remoteUserId === userId ? cycle.remoteSha : undefined;
+    let result;
+    try {
+      result = await writeFile(cfg, userPath(cfg, userId, CYCLE_FILE),
+        { userId, periods: cycle.periods, spotting: cycle.spotting || [] }, sha, `${userId}: update cycle`);
+    } catch (e) {
+      result = { ok: false, error: networkError(e) };
+    }
+    if (result.ok) {
+      const now = await getCycle();
+      await setMeta("cycle", { ...now, remoteSha: result.sha, remoteUserId: userId, syncedAt: cycle.updatedAt });
+      await noteRemoteFile(CYCLE_FILE, result.sha, userId);
+      status(isDirty(now) ? "syncing" : "synced");
+      return { ok: true };
+    }
+    if (!result.conflict) { status("error", result.error); return result; }
+    try {
+      const remote = await readFile(cfg, userPath(cfg, userId, CYCLE_FILE));
+      await applyRemoteCycle(remote ? remote.sha : undefined, remote ? remote.data : { periods: [], spotting: [] }, userId);
+    } catch (e) {
+      status("error", networkError(e));
+      return { ok: false, error: networkError(e) };
+    }
+  }
+  return { ok: false, error: "conflict-retries" };
+}
+
+async function applyRemoteCycle(sha, remote, userId) {
+  const local = await getCycle();
+  if (sha && local.remoteSha === sha && local.remoteUserId === userId) return false;
+  if (!isDirty(local)) {
+    const stamp = Date.now();
+    await setMeta("cycle", { periods: remote.periods || [], spotting: remote.spotting || [], updatedAt: stamp, syncedAt: stamp, remoteSha: sha, remoteUserId: userId });
+  } else {
+    const merged = mergeCycle(local, remote);
+    await setMeta("cycle", { ...local, ...merged, remoteSha: sha, remoteUserId: userId, updatedAt: Math.max(Date.now(), (local.syncedAt || 0) + 1) });
+  }
+  announce([], true);
+  return true;
+}
+
+/* ---------------- Pull ---------------- */
+
+let pullInFlight = null;
+
+export function pullRecent() {
+  if (!pullInFlight) pullInFlight = doPull().finally(() => { pullInFlight = null; });
+  return pullInFlight;
+}
+
+async function doPull() {
+  if ((await configState()) !== "ready") return { ok: false, error: await configState() };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  await uploadsIdle();
+  status("pulling");
+  const startedAt = Date.now();
+  try {
+    const { files } = await listUserFolder(cfg, userId);
+    await saveIndex({ userId, files, fetchedAt: startedAt });
+
+    const changed = [];
+    const since = shiftDate(todayStr(), -(RECENT_DAYS - 1));
+    const locals = new Map((await getAllEntries()).map((e) => [e.date, e]));
+
+    for (const [name, sha] of Object.entries(files)) {
+      const m = DAY_FILE.exec(name);
+      if (!m) continue;
+      const date = m[1];
+      const local = locals.get(date);
+      // Recent days always come down; older ones only if this device already
+      // holds a copy that has fallen behind.
+      if (date < since && !local) continue;
+      if (local && local.remoteSha === sha && local.remoteUserId === userId) continue;
+      if (await applyRemoteEntry(date, sha, await readBlob(cfg, sha), userId)) changed.push(date);
+    }
+
+    // A day that was synced before but is gone from GitHub was deleted or
+    // moved on another device. Unsynced local edits are never removed.
+    for (const [date, local] of locals) {
+      if (files[`${date}.json`] || isDirty(local)) continue;
+      const wasSynced = local.remoteSha || local.syncedAt;
+      const sameUser = !local.remoteUserId || local.remoteUserId === userId;
+      if (wasSynced && sameUser && (local.syncedAt || 0) < startedAt) {
+        await deleteEntry(date);
+        changed.push(date);
+      }
+    }
+
+    if (files[CYCLE_FILE]) await applyRemoteCycle(files[CYCLE_FILE], await readBlob(cfg, files[CYCLE_FILE]), userId);
+
+    announce(changed);
+    await syncAllPending();
+    status("synced");
+    return { ok: true, changed };
+  } catch (e) {
+    status("error", networkError(e));
+    return { ok: false, error: networkError(e) };
+  }
+}
+
+export async function syncAllPending() {
+  if ((await configState()) !== "ready") return;
+  const all = await getAllEntries();
+  await Promise.all([
+    ...all.filter(isDirty).map((e) => queuePush(e.date)),
+    isDirty(await getCycle()) ? queueCyclePush() : Promise.resolve(),
+  ]);
+}
+
+/* ---------------- Account ---------------- */
+
+export async function hasUnsyncedData() {
+  const all = await getAllEntries();
+  return all.some(isDirty) || isDirty(await getCycle());
+}
+
+// Points this device at a user id. Switching to a different id clears the
+// previous user's copies from this device (refused if any are unsynced).
+export async function adoptUserId(id) {
+  const current = await getUserId();
+  if (current && current !== id) {
+    if (await hasUnsyncedData()) return { ok: false, error: "unsynced-other-user" };
+    await clearEntries();
+    await deleteMeta("cycle");
+    await deleteMeta("remote_index");
+    remoteIndex = null;
+  }
+  await setUserId(id);
+  return { ok: true };
+}
+
+// Claims a new user's folder by writing an empty cycle.json. Fails with
+// "taken" if the id already exists (vanishingly unlikely for a random id).
+export async function createUserFolder(cfg, id) {
+  try {
+    if (await userFolderExists(cfg, id)) return { ok: false, error: "taken" };
+    const res = await writeFile(cfg, userPath(cfg, id, CYCLE_FILE), { userId: id, periods: [], spotting: [] }, undefined, `${id}: new user`);
+    return res.ok ? { ok: true } : { ok: false, error: res.conflict ? "taken" : res.error };
+  } catch (e) {
+    return { ok: false, error: networkError(e) };
   }
 }

@@ -9,9 +9,15 @@ import {
   SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, NONE_MARKERS, SECTION_COLORS,
 } from "./schema.js";
 import { getEntry, putEntry } from "./db.js";
-import { syncEntry, isConfigured } from "./sync.js";
+import { queuePush, fetchDay, getCycle } from "./sync.js";
 import { todayStr, shiftDate, parseDateStr } from "./dates.js";
 import { sectionOrder, getActiveDetails, sectionLines } from "./summary.js";
+import { mergeEntries, sameEntryContent } from "./merge.js";
+import { cycleStatus, periodCovering } from "./cycle.js";
+import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
+import { openSheet, choose } from "./ui.js";
+
+function clone(v) { return JSON.parse(JSON.stringify(v)); }
 
 const TONE_VARS = {
   mauve: "var(--tone-mauve)", ochre: "var(--tone-ochre)", clay: "var(--tone-clay)",
@@ -34,7 +40,7 @@ function withAllSections(answers) {
   return a;
 }
 
-export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
+export function mountDailyLog(root, { onSaveStatus }) {
   const state = {
     date: todayStr(),
     answers: blankAnswers(),
@@ -42,7 +48,13 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     expanded: new Set([ALWAYS_ON[0]]),
     enteredIds: new Set([ALWAYS_ON[0]]),
     dirty: false,
+    // What this screen's copy was based on — the reference point for merging
+    // in changes that arrive from another device while the day is open.
+    snapshot: null,
+    editSeq: 0,
+    periods: [],
   };
+  let loadSeq = 0;
 
   root.innerHTML = `
     <div id="storageBanner" class="banner"></div>
@@ -85,10 +97,11 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   }
   function firstIncompleteId(order) { return order.find((id) => !state.done.has(id)); }
 
+  function markDirty() { state.dirty = true; state.editSeq++; }
   function fieldValue(secId, fieldId) { return state.answers[secId][fieldId]; }
-  function setFieldValue(secId, fieldId, value) { state.answers[secId][fieldId] = value; state.dirty = true; }
+  function setFieldValue(secId, fieldId, value) { state.answers[secId][fieldId] = value; markDirty(); }
   function detailValue(secId, fieldId, detailId) { return state.answers[secId][fieldId + "__" + detailId]; }
-  function setDetailValue(secId, fieldId, detailId, value) { state.answers[secId][fieldId + "__" + detailId] = value; state.dirty = true; }
+  function setDetailValue(secId, fieldId, detailId, value) { state.answers[secId][fieldId + "__" + detailId] = value; markDirty(); }
 
   function escHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
   function escAttr(s) { return escHtml(s).replace(/"/g, "&quot;"); }
@@ -198,13 +211,26 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     </section>`;
   }
 
+  function cycleLineText() {
+    const s = cycleStatus(state.periods, state.date);
+    if (!s.hasData) return T("尚未記錄經期||No period recorded yet");
+    let text = T("週期第||Cycle day ") + " " + s.cycleDay + " " + T("天||");
+    if (s.stats.count) text += " · " + T("平均週期||Average cycle ") + " " + s.stats.average + " " + T("天||days");
+    if (s.inPeriod) text += " · " + T("經期中||On period");
+    return text.replace(/\s+/g, " ").trim();
+  }
+
   function renderCycleField() {
     const value = state.answers.meta.cyclePhase;
     const html = `<div class="mood-card cycle-field"><label class="q" style="display:block;margin-bottom:8px;">${T(CYCLE_FIELD.label)}</label>` +
       `<div class="opts">` + CYCLE_FIELD.options.map((opt) => {
         const on = value === opt;
         return `<button type="button" class="opt${on ? " on" : ""}" data-cycle="1" data-value="${escAttr(opt)}">${T(opt)}</button>`;
-      }).join("") + `</div></div>`;
+      }).join("") + `</div>
+      <div class="cycle-line">
+        <span>${escHtml(cycleLineText())}</span>
+        <button type="button" class="btn ghost" data-cycle-modify="1">${T("修改||Adjust")}</button>
+      </div></div>`;
     $("#cycleField").innerHTML = html;
   }
 
@@ -268,14 +294,83 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   /* ---------------- Events ---------------- */
 
   $("#cycleField").addEventListener("click", (e) => {
+    if (e.target.closest("[data-cycle-modify]")) { openCycleSheet(); return; }
     const btn = e.target.closest("button[data-cycle]");
     if (!btn) return;
     const cur = state.answers.meta.cyclePhase;
     state.answers.meta.cyclePhase = cur === btn.dataset.value ? "" : btn.dataset.value;
-    state.dirty = true;
+    markDirty();
     renderApp();
     scheduleAutoSave();
+    if (state.answers.meta.cyclePhase === PERIOD_PHASE && !periodCovering(state.periods, state.date)) askPeriodStart();
   });
+
+  function dayWord(date) {
+    return date === todayStr() ? T("今天||today") : formatTicketDate(date);
+  }
+
+  // Picking 經期 on a day no recorded period covers: is this a new period?
+  async function askPeriodStart() {
+    const date = state.date;
+    const s = cycleStatus(state.periods, date);
+    const actions = [
+      { label: T("是，經期從這天開始||Yes, it started this day"), kind: "accent", value: "start" },
+    ];
+    if (s.hasData && s.cycleDay <= 15) {
+      actions.push({ label: T("延長上次經期到這一天||Extend my last period to this day"), value: "extend" });
+    }
+    actions.push({ label: T("不是，只記錄這一天||No, just log this day"), kind: "ghost", value: null });
+    const choice = await choose({
+      title: T("經期是在||Did your period start ") + dayWord(date) + T("開始的嗎？||?"),
+      text: T("記錄經期開始，日曆和首頁就能計算週期與預測。||Marking the start lets the calendar and Home work out your cycle.")
+    , actions });
+    if (!choice) return;
+    await flushAutoSaveNow();
+    if (choice === "start") await startPeriod(date);
+    else if (choice === "extend") await endPeriod(date);
+  }
+
+  function openCycleSheet() {
+    const date = state.date;
+    const covering = periodCovering(state.periods, date);
+    openSheet((sheet, close) => {
+      sheet.innerHTML = `<h2>${T("修改週期||Adjust cycle")}</h2>
+        <p class="sheet-text">${escHtml(cycleLineText())}</p>
+        <div class="sheet-actions">
+          <button type="button" class="btn accent" data-act="start">${
+            date === todayStr() ? T("經期今天開始（第 1 天）||My period started today (day 1)")
+              : escHtml(T("經期從這天開始：||Period started on ") + formatTicketDate(date))}</button>
+          ${covering ? `<button type="button" class="btn" data-act="end">${
+            date === todayStr() ? T("經期今天結束||My period ended today")
+              : escHtml(T("經期在這天結束：||Period ended on ") + formatTicketDate(date))}</button>` : ""}
+        </div>
+        <form class="sheet-date" data-act-form="1">
+          <label for="cycleOtherDate">${T("經期從其他日期開始||It started on a different day")}</label>
+          <div class="sheet-date-row">
+            <input type="date" id="cycleOtherDate" max="${todayStr()}" required>
+            <button type="submit" class="btn">${T("儲存||Save")}</button>
+          </div>
+        </form>
+        <div class="btnrow"><button type="button" class="btn ghost" data-act="close">${T("取消||Cancel")}</button></div>`;
+      sheet.addEventListener("click", async (e) => {
+        const act = e.target.closest("[data-act]")?.dataset.act;
+        if (!act) return;
+        close();
+        if (act === "close") return;
+        await flushAutoSaveNow();
+        if (act === "start") await startPeriod(date);
+        if (act === "end") await endPeriod(date);
+      });
+      sheet.querySelector("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const other = sheet.querySelector("#cycleOtherDate").value;
+        if (!other) return;
+        close();
+        await flushAutoSaveNow();
+        await startPeriod(other);
+      });
+    });
+  }
 
   function prefersReducedMotion() {
     return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -294,7 +389,7 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     const cur = state.answers.meta.moodRating;
     const wasEmpty = !cur;
     state.answers.meta.moodRating = String(cur) === val ? "" : val;
-    state.dirty = true;
+    markDirty();
     renderApp();
     scheduleAutoSave();
     if (wasEmpty && state.answers.meta.moodRating) {
@@ -316,7 +411,7 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
       const id = doneBtn.getAttribute("data-sec");
       state.done.add(id);
       state.expanded.delete(id);
-      state.dirty = true;
+      markDirty();
       if (id === "general" || id === "diet") amendPreviousDay(id);
       const next = firstIncompleteId(currentOrder());
       if (next) { state.expanded.add(next); state.enteredIds.add(next); }
@@ -382,7 +477,7 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     state.answers.meta.cyclePhase = phase;
     state.done = new Set();
     settleExpanded();
-    state.dirty = true;
+    markDirty();
     renderApp();
     scheduleAutoSave();
   });
@@ -441,7 +536,8 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
       data.amended = true;
       data.updatedAt = Date.now();
       await putEntry(data);
-      backgroundSync(data);
+      queuePush(targetDate);
+      window.dispatchEvent(new CustomEvent("tcm:data-changed", { detail: { dates: [targetDate], cycle: false } }));
     } catch (e) { /* best-effort — never blocks today's own save */ }
   }
 
@@ -450,48 +546,91 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
     state.expanded = next ? new Set([next]) : new Set();
   }
 
+  // Shows a stored day. keepLayout leaves open sections as they are (used when
+  // another device's changes arrive for the day already on screen).
+  function applyLoaded(data, { keepLayout = false } = {}) {
+    state.answers = withAllSections(data ? clone(data.answers || {}) : null);
+    state.done = new Set(data?.done || []);
+    state.snapshot = { answers: clone(state.answers), done: Array.from(state.done) };
+    // Two-way link: a day inside a recorded period opens with 經期 selected.
+    // It is only saved if the day is edited.
+    if (!state.answers.meta.cyclePhase && periodCovering(state.periods, state.date)) {
+      state.answers.meta.cyclePhase = PERIOD_PHASE;
+    }
+    if (!keepLayout) settleExpanded();
+    state.dirty = false;
+    renderApp();
+  }
+
   async function loadDate(dateStr) {
     // Save the day being left first. A pending autosave fires against whatever
     // state.date is when its timer runs, so switching days mid-debounce would
     // otherwise drop the last edits of the previous day.
     flushAutoSave();
+    const seq = ++loadSeq;
     state.date = dateStr;
-    state.done = new Set();
-    try {
-      const data = await getEntry(dateStr);
-      if (data) {
-        state.answers = withAllSections(data.answers);
-        state.done = new Set(data.done || []);
-      } else {
-        state.answers = blankAnswers();
-      }
-    } catch (e) {
-      state.answers = blankAnswers();
-    }
-    settleExpanded();
-    state.dirty = false;
-    renderApp();
+    const local = await getEntry(dateStr).catch(() => null);
+    if (seq !== loadSeq) return;
+    applyLoaded(local);
+    if (local) return;
+    // Not on this device: it may exist on GitHub (older than the recent days
+    // downloaded at startup).
+    const remote = await fetchDay(dateStr);
+    if (remote && seq === loadSeq && !state.dirty) applyLoaded(remote);
   }
 
-  async function backgroundSync(entry) {
-    const configured = await isConfigured();
-    if (!configured) { onSyncStatus("not-configured"); return; }
-    syncEntry(entry, onSyncStatus);
-  }
+  let lastSave = Promise.resolve();
+  // This screen's own most recent write per day, so a queued save doesn't
+  // mistake the previous save for a change from elsewhere.
+  const ownWrites = new Map();
 
-  async function saveCurrent(extra) {
-    onSaveStatus("saving");
-    const payload = Object.assign({
+  // What to save is captured now, synchronously — by the time a queued save
+  // runs, the screen may already show a different day.
+  function saveCurrent(extra = {}) {
+    const job = {
       date: state.date,
-      answers: state.answers,
-      done: Array.from(state.done),
-      updatedAt: Date.now(),
-    }, extra || {});
+      editSeq: state.editSeq,
+      mine: { answers: clone(state.answers), done: Array.from(state.done) },
+      snapshot: state.snapshot,
+      extra,
+    };
+    onSaveStatus("saving");
+    lastSave = lastSave.catch(() => {}).then(() => saveNow(job));
+    return lastSave;
+  }
+
+  async function saveNow({ date, editSeq, mine, snapshot, extra }) {
     try {
-      await putEntry(payload);
-      state.dirty = false;
-      onSaveStatus("saved");
-      backgroundSync(payload);
+      const stored = await getEntry(date);
+      let next = mine;
+      let changedUnderUs = false;
+      // If the stored day changed since this screen loaded it (another device,
+      // an amendment, a period marked on Home), apply only this screen's own
+      // edits on top rather than overwriting.
+      const ownWrite = ownWrites.get(date);
+      if (stored && snapshot && !sameEntryContent(stored, snapshot) && !(ownWrite && sameEntryContent(stored, ownWrite))) {
+        const merged = mergeEntries(snapshot, mine, stored);
+        next = { answers: merged.answers, done: merged.done };
+        changedUnderUs = true;
+      }
+      await putEntry({ ...(stored || {}), date, answers: next.answers, done: next.done, updatedAt: Date.now(), ...extra });
+      ownWrites.set(date, clone(next));
+      if (state.date === date) {
+        if (state.editSeq === editSeq) {
+          state.snapshot = clone(next);
+          state.dirty = false;
+          if (changedUnderUs) {
+            state.answers = withAllSections(clone(next.answers));
+            state.done = new Set(next.done);
+            renderApp();
+          }
+        } else {
+          // More edits arrived while saving: they were made on top of `mine`.
+          state.snapshot = mine;
+        }
+      }
+      onSaveStatus(state.dirty ? "saving" : "saved");
+      queuePush(date);
     } catch (e) {
       // IndexedDB write failed — the one case that must be surfaced loudly,
       // never silently. state.dirty stays true so the pill keeps saying so.
@@ -508,6 +647,10 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
   function flushAutoSave() {
     if (autoSaveTimer) { clearTimeout(autoSaveTimer); autoSaveTimer = null; }
     if (state.dirty) saveCurrent();
+  }
+  async function flushAutoSaveNow() {
+    flushAutoSave();
+    await lastSave.catch(() => {});
   }
   // An app left open overnight must not keep logging into yesterday: when it
   // comes back on screen after midnight, today's page follows the new day.
@@ -559,8 +702,27 @@ export function mountDailyLog(root, { onSaveStatus, onSyncStatus }) {
 
   window.addEventListener("tcm:lang-change", () => renderApp());
 
+  async function refreshPeriods() {
+    state.periods = (await getCycle()).periods || [];
+  }
+
+  // Changes from sync, Home, the calendar or an amendment.
+  window.addEventListener("tcm:data-changed", async (e) => {
+    const { dates = [], cycle } = e.detail || {};
+    if (cycle) {
+      await refreshPeriods();
+      renderCycleField();
+    }
+    if (!dates.includes(state.date)) return;
+    // Unsaved edits on screen: the next save merges the new version in.
+    if (state.dirty || autoSaveTimer) return;
+    const stored = await getEntry(state.date).catch(() => null);
+    if (state.dirty || autoSaveTimer) return;
+    if (!stored || !state.snapshot || !sameEntryContent(stored, state.snapshot)) applyLoaded(stored, { keepLayout: true });
+  });
+
   renderApp();
-  loadDate(state.date);
+  refreshPeriods().then(() => loadDate(state.date));
 
   return {
     refreshLang: () => renderApp(),

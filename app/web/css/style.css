@@ -221,7 +221,7 @@ section.sec.enter { animation: riseIn .35s ease-out; }
 .scale { display: flex; gap: 6px; }
 .scale .opt { flex: 1; text-align: center; }
 
-textarea, input[type="text"], input[type="number"], input[type="password"] {
+textarea, input[type="text"], input[type="number"], input[type="password"], input[type="date"] {
   width: 100%; font: inherit; padding: 9px 11px;
   border: 1px solid var(--line-strong); border-radius: 9px;
   background: var(--surface); color: var(--ink);
@@ -313,3 +313,83 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .pv-line dt { color: var(--ink-soft); }
 .pv-line dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 460px) { .pv-line { grid-template-columns: 1fr; gap: 2px; } }
+
+/* ---------- Bottom-sheet dialogs ---------- */
+.sheet-text { font-size: 0.84rem; color: var(--ink-soft); line-height: 1.55; margin: -4px 0 14px; }
+.sheet-actions { display: flex; flex-direction: column; gap: 8px; }
+.sheet-actions .btn { text-align: left; padding: 12px 14px; }
+.sheet-date { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.sheet-date label, .home-other label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; }
+.sheet-date-row { display: flex; gap: 8px; }
+.sheet-date-row input { flex: 1; min-width: 0; }
+
+/* ---------- Cycle line (daily log) ---------- */
+.cycle-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--ink-soft); }
+.cycle-line .btn { padding: 6px 10px; flex-shrink: 0; }
+
+/* ---------- Calendar cycle markers ---------- */
+.cal-marks { display: flex; gap: 3px; height: 5px; align-items: center; }
+.cal-mark { width: 5px; height: 5px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.cal-mark.ovu { border: 1.2px solid var(--tone-stone-blue); background: transparent; }
+.cal-mark.egg { background: var(--tone-moss); }
+.cal-mark.spot { background: var(--danger); opacity: .65; }
+.cal-day.is-period-estimate { background: color-mix(in srgb, var(--tone-rose) 14%, transparent); }
+.cal-day.is-predicted:not(.is-selected) { border: 1px dashed color-mix(in srgb, var(--tone-rose) 80%, transparent); }
+.cal-swatch.is-predicted { background: transparent; border: 1px dashed var(--tone-rose); }
+.cal-legends .cal-mark { width: 7px; height: 7px; }
+.cal-foot { align-items: flex-start; gap: 10px; }
+.pv-cycle { font-size: 0.8rem; color: var(--tone-clay); margin: 6px 0 0; line-height: 1.5; }
+
+/* ---------- Home ---------- */
+.home-card { margin-top: 18px; padding: 24px 20px 18px; }
+.home-kicker { font-size: 0.72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 6px; }
+.home-big { font-size: 2.2rem; font-weight: 500; line-height: 1.15; margin: 0 0 10px; }
+.home-next { font-size: 0.98rem; margin: 0 0 4px; line-height: 1.5; }
+.home-sub, .home-stats { font-size: 0.8rem; color: var(--ink-soft); margin: 0 0 4px; line-height: 1.5; }
+.home-note { font-size: 0.78rem; color: var(--ink-soft); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; margin: 12px 0 0; line-height: 1.55; }
+.home-actions { flex-wrap: wrap; padding-top: 18px; }
+.home-other { margin-top: 12px; }
+.home-other[hidden] { display: none; }
+.home-foot { font-size: 0.7rem; color: var(--ink-soft); margin: 14px 0 0; }
+.home-link { display: block; margin: 0 0 24px auto; }
+
+/* ---------- Connect ---------- */
+body.connect-open { overflow: hidden; }
+.connect-overlay { position: fixed; inset: 0; z-index: 40; background: var(--bg); overflow-y: auto; padding: 40px 16px calc(40px + env(safe-area-inset-bottom)); }
+.connect-card { max-width: 480px; margin: 0 auto; padding: 24px 20px; }
+.connect-card h1 { font-size: 1.5rem; font-weight: 500; margin-bottom: 8px; }
+.connect-card form label { display: block; font-size: 0.8rem; font-weight: 600; margin: 14px 0 6px; }
+.connect-tabs { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; margin: 18px 0 4px; }
+.connect-tabs button { border: none; background: var(--surface); color: var(--ink-soft); padding: 10px 8px; font-size: 0.84rem; }
+.connect-tabs button[aria-selected="true"] { background: var(--surface-2); color: var(--ink); font-weight: 600; }
+.connect-newid { display: flex; gap: 8px; }
+.connect-newid input { font-family: ui-monospace, "SF Mono", monospace; letter-spacing: .08em; font-size: 1.05rem; }
+.connect-advanced { margin-top: 14px; font-size: 0.8rem; }
+.connect-advanced summary { color: var(--ink-soft); cursor: pointer; padding: 4px 0; }
+
+/* ---------- Profile ---------- */
+.profile-head { padding: 28px 4px 12px; }
+.profile-head h1 { font-size: 1.6rem; font-weight: 500; }
+.card-title { font-size: 1rem; font-weight: 600; margin-bottom: 6px; }
+.profile-id { font-size: 0.9rem; margin: 4px 0; }
+.profile-id strong { font-family: ui-monospace, "SF Mono", monospace; letter-spacing: .05em; }
+.period-list { list-style: none; padding: 0; margin: 12px 0 4px; }
+.period-list li { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.period-list li:last-child { border-bottom: none; }
+.period-dates { font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.period-meta { font-size: 0.72rem; color: var(--ink-soft); grid-column: 1; }
+.period-del { grid-column: 2; grid-row: 1 / span 2; padding: 6px 8px; font-size: 0.76rem; }
+.period-add { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.period-add h3 { font-size: 0.88rem; font-weight: 600; margin-bottom: 4px; }
+.period-add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.period-add-row label { margin: 8px 0 0; }
+.period-add-row input { margin-top: 6px; }
+@media (max-width: 420px) { .period-add-row { grid-template-columns: 1fr; } }
+.import-steps { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.6; padding-left: 20px; margin: 8px 0 14px; }
+.import-pick { display: inline-block; cursor: pointer; margin: 0 !important; font-size: 0.84rem !important; font-weight: 500 !important; }
+.import-progress { margin-top: 14px; }
+.import-progress[hidden] { display: none; }
+.import-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.import-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+.import-review { margin-top: 14px; font-size: 0.86rem; }
+.import-review p { margin: 0 0 6px; }
