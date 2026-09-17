@@ -436,7 +436,13 @@ const CONDITIONAL = ["preperiod","period","postperiod"];
 
 /* ---------------- State ---------------- */
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+/* Days are the device's local calendar days, never UTC. toISOString() gives the
+   UTC date, which east of Greenwich is still "yesterday" until morning — in
+   UTC+8 a log written before 8am was filed under the previous day. */
+function localDateStr(d){
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+function todayStr(){ return localDateStr(new Date()); }
 
 function blankAnswers(){
   const a = { meta:{} };
@@ -805,7 +811,7 @@ document.getElementById("sections").addEventListener("input", function(e){
 });
 
 document.getElementById("dateInput").addEventListener("change", function(e){
-  loadDate(e.target.value);
+  if(e.target.value) loadDate(e.target.value);
 });
 
 document.getElementById("resetBtn").addEventListener("click", function(){
@@ -872,7 +878,7 @@ function docRefFor(dateStr){ return state.db.collection("entries").doc(dateStr);
 function shiftDate(dateStr, delta){
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0,10);
+  return localDateStr(d);
 }
 
 /* ---------------- Retroactive prev-day amendments ---------------- */
@@ -928,6 +934,8 @@ function settleExpanded(){
 }
 
 function loadDate(dateStr){
+  // Save the day being left first, so a pending autosave can't drop its last edits.
+  flushAutoSave();
   state.date = dateStr;
   state.done = new Set();
   if(!state.db){
@@ -989,8 +997,15 @@ function flushAutoSave(){
   if(autoSaveTimer){ clearTimeout(autoSaveTimer); autoSaveTimer = null; }
   if(state.dirty) saveCurrent();
 }
+// Left open overnight, today's page follows the new day when it comes back on screen.
+let lastSeenToday = todayStr();
 document.addEventListener("visibilitychange", function(){
-  if(document.visibilityState === "hidden") flushAutoSave();
+  if(document.visibilityState === "hidden"){ flushAutoSave(); return; }
+  const today = todayStr();
+  if(today !== lastSeenToday){
+    if(state.date === lastSeenToday) loadDate(today);
+    lastSeenToday = today;
+  }
 });
 window.addEventListener("pagehide", flushAutoSave);
 
