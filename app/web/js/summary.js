@@ -5,6 +5,17 @@
 import { T } from "./i18n.js";
 import { SCHEMA, ALWAYS_ON, CONDITIONAL, NONE_MARKERS, MOOD_WORDS } from "./schema.js";
 
+// The cabinet section stores the names taken, so a day still reads correctly
+// after an item is renamed or removed from the cabinet.
+function cabinetLines(ans = {}) {
+  const lines = [];
+  if (Array.isArray(ans.taken) && ans.taken.length) {
+    lines.push({ label: T("今天服用||Taken today"), text: ans.taken.join("、") });
+  }
+  if (ans.notes) lines.push({ label: T("備註||Notes"), text: ans.notes });
+  return lines;
+}
+
 export function sectionOrder(phase) {
   return ALWAYS_ON.concat(CONDITIONAL.filter((id) => SCHEMA[id].condition(phase)));
 }
@@ -48,6 +59,7 @@ function summarizeDetailValue(dv) {
 
 // One section's answered fields as [{ label, text }].
 export function sectionLines(secId, ans = {}) {
+  if (SCHEMA[secId].dynamic === "cabinet") return cabinetLines(ans);
   const lines = [];
   SCHEMA[secId].fields.forEach((f) => {
     const v = ans[f.id];

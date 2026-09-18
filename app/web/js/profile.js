@@ -5,9 +5,10 @@ import { T } from "./i18n.js";
 import { getUserId, configState, getCycle, setToken, pullRecent } from "./sync.js";
 import { activePeriods, daysBetween, periodEnd } from "./cycle.js";
 import { addPastPeriod, deletePeriod, importPeriods } from "./cycle-store.js";
+import { listItems, addItem, updateItem, deleteItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { scanHealthExport, periodsFromScan } from "./health-import.js";
 import { todayStr } from "./dates.js";
-import { esc, fullDate, choose } from "./ui.js";
+import { esc, fullDate, choose, openSheet } from "./ui.js";
 
 const SOURCES = {
   app: "App||App",
@@ -27,7 +28,7 @@ export function mountProfile(root, { onConnect }) {
   let importMessage = ""; // survives re-renders triggered by the import itself
 
   async function render() {
-    const [userId, state, cycle] = await Promise.all([getUserId(), configState(), getCycle()]);
+    const [userId, state, cycle, cabinet] = await Promise.all([getUserId(), configState(), getCycle(), listItems()]);
     const periods = activePeriods(cycle.periods).reverse();
     const shown = showAll ? periods : periods.slice(0, 8);
     const connected = state === "ready";
@@ -52,6 +53,19 @@ export function mountProfile(root, { onConnect }) {
             : `<button type="button" class="btn accent" data-act="connect">${T("連線 GitHub||Connect GitHub")}</button>`}
           ${userId ? `<button type="button" class="btn ghost" data-act="switch">${T("切換使用者||Switch user")}</button>` : ""}
         </div>
+      </section>
+
+      <section class="card settings-form">
+        <h2 class="card-title">${T("藥櫃||Cabinet")}</h2>
+        <p class="settings-hint">${T("你手邊有的茶飲、保健品和中藥。每天在日誌裡勾選服用的品項；分析時也會附上整個藥櫃，好從你已經有的東西給建議。||The teas, supplements and herbs you have. Tick what you took in the daily log; the whole cabinet is attached to the analysis so suggestions come from what you already own.")}</p>
+        ${cabinet.length ? `<ul class="period-list cabinet-list">${cabinet.map((i) => `
+          <li>
+            <span class="period-dates">${esc(i.name)}</span>
+            <span class="period-meta">${T(KINDS[i.kind] || KINDS.other)} · ${T(SCHEDULES[i.schedule] || SCHEDULES.daily)}${
+              i.ingredients ? " · " + esc(i.ingredients) : ""}</span>
+            <button type="button" class="btn ghost period-del" data-cab-edit="${esc(i.id)}">${T("編輯||Edit")}</button>
+          </li>`).join("")}</ul>` : ""}
+        <div class="btnrow"><button type="button" class="btn" data-act="cab-add">${T("新增品項||Add an item")}</button></div>
       </section>
 
       <section class="card settings-form">
@@ -122,8 +136,11 @@ export function mountProfile(root, { onConnect }) {
       if (ok) await deletePeriod(start);
       return;
     }
+    const edit = e.target.closest("[data-cab-edit]");
+    if (edit) { openCabinetSheet((await listItems()).find((i) => i.id === edit.dataset.cabEdit)); return; }
     const act = e.target.closest("[data-act]")?.dataset.act;
     if (!act) return;
+    if (act === "cab-add") { openCabinetSheet(null); return; }
     if (act === "connect") onConnect({ allowOffline: true });
     if (act === "switch") onConnect({ allowOffline: false });
     if (act === "pull") pullRecent();
@@ -202,6 +219,74 @@ export function mountProfile(root, { onConnect }) {
       e.target.value = "";
     }
   });
+
+  // Add or edit one cabinet item. Passing an item switches to edit mode,
+  // which also offers removal.
+  function openCabinetSheet(item) {
+    openSheet((sheet, close) => {
+      sheet.innerHTML = `<h2>${item ? T("編輯品項||Edit item") : T("新增到藥櫃||Add to your cabinet")}</h2>
+        <form id="cabForm">
+          <label for="cabName">${T("名稱||Name")}</label>
+          <input type="text" id="cabName" required value="${esc(item?.name || "")}" placeholder="${T("例如：紅棗枸杞茶||e.g. red date & goji tea")}">
+          <label>${T("類型||Type")}</label>
+          <div class="opts" id="cabKind">${Object.entries(KINDS).map(([k, label]) =>
+            `<button type="button" class="opt${(item?.kind || "tea") === k ? " on" : ""}" data-kind="${k}">${T(label)}</button>`).join("")}</div>
+          <label>${T("頻率||How often")}</label>
+          <div class="opts" id="cabSchedule">${Object.entries(SCHEDULES).map(([k, label]) =>
+            `<button type="button" class="opt${(item?.schedule || "daily") === k ? " on" : ""}" data-schedule="${k}">${T(label)}</button>`).join("")}</div>
+          <label for="cabIngredients">${T("成分（名稱看不出來時才需要）||Ingredients (only if the name doesn't say)")}</label>
+          <input type="text" id="cabIngredients" value="${esc(item?.ingredients || "")}" placeholder="${T("例如：黃耆、當歸、紅棗||e.g. astragalus, angelica, red dates")}">
+          <div class="settings-status error" id="cabStatus"></div>
+          <div class="btnrow">
+            <button type="submit" class="btn accent">${item ? T("儲存||Save") : T("加入||Add")}</button>
+            ${item ? `<button type="button" class="btn ghost" data-cab-remove="1">${T("移除||Remove")}</button>` : ""}
+            <button type="button" class="btn ghost" data-close="1">${T("取消||Cancel")}</button>
+          </div>
+        </form>`;
+      sheet.addEventListener("click", async (e) => {
+        const kind = e.target.closest("[data-kind]");
+        if (kind) { sheet.querySelectorAll("[data-kind]").forEach((b) => b.classList.toggle("on", b === kind)); return; }
+        const sch = e.target.closest("[data-schedule]");
+        if (sch) { sheet.querySelectorAll("[data-schedule]").forEach((b) => b.classList.toggle("on", b === sch)); return; }
+        if (e.target.closest("[data-close]")) close();
+        if (e.target.closest("[data-cab-remove]")) {
+          close();
+          const ok = await choose({
+            title: T("從藥櫃移除？||Remove from your cabinet?"),
+            text: item.name + " — " + T("已經記錄過的日子不受影響。||days that already recorded it are unaffected."),
+            actions: [
+              { label: T("移除||Remove"), kind: "accent", value: true },
+              { label: T("取消||Cancel"), kind: "ghost", value: false },
+            ],
+          });
+          if (ok) { await deleteItem(item.id); render(); }
+        }
+      });
+      sheet.querySelector("#cabForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const values = {
+          name: sheet.querySelector("#cabName").value,
+          kind: sheet.querySelector("#cabKind .on")?.dataset.kind,
+          schedule: sheet.querySelector("#cabSchedule .on")?.dataset.schedule,
+          ingredients: sheet.querySelector("#cabIngredients").value,
+        };
+        const result = item
+          ? await updateItem(item.id, { ...values, name: values.name.trim() })
+          : await addItem(values);
+        if (!result.ok) {
+          const status = sheet.querySelector("#cabStatus");
+          status.classList.add("show");
+          status.textContent = result.error === "duplicate"
+            ? T("藥櫃裡已經有同名的品項。||An item with that name is already in your cabinet.")
+            : T("請輸入名稱。||Please enter a name.");
+          return;
+        }
+        close();
+        render();
+      });
+      sheet.querySelector("#cabName").focus({ preventScroll: true });
+    });
+  }
 
   window.addEventListener("tcm:data-changed", (e) => { if (e.detail?.cycle && !pendingImport) render(); });
   window.addEventListener("tcm:connection-changed", render);

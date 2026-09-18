@@ -23,6 +23,8 @@ app/web/            the real app (deployed)
 ├── js/
 │   ├── app.js           shell: nav, status strip, boot + foreground sync
 │   ├── schema.js        question schema — edit questions here, not the UI
+│                        (the Cabinet section is rendered from cabinet.json,
+│                         not from `fields`, and stays out of the Done flow)
 │   ├── daily-log.js     the daily-log screen (+ cycle line, merge-on-save)
 │   ├── calendar.js      history: month calendar, cycle markers, day preview
 │   ├── home.js          cycle day, next period, period start/end button
@@ -32,6 +34,7 @@ app/web/            the real app (deployed)
 │   ├── merge.js         field-level merge of two devices' edits
 │   ├── cycle.js         cycle maths (pure)
 │   ├── cycle-store.js   period records (cycle.json) + log phase link
+│   ├── cabinet-store.js your teas/supplements (cabinet.json)
 │   ├── health-import.js streams export.zip, finds period records
 │   ├── ids.js           typo-safe user ids with a check character
 │   ├── summary.js       entry → readable lines (preview + Run analysis)

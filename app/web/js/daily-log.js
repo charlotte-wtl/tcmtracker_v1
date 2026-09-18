@@ -6,7 +6,7 @@
 
 import { T, getLang } from "./i18n.js";
 import {
-  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, NONE_MARKERS, SECTION_COLORS,
+  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, OUT_OF_FLOW, NONE_MARKERS, SECTION_COLORS,
 } from "./schema.js";
 import { getEntry, putEntry } from "./db.js";
 import { queuePush, fetchDay, getCycle } from "./sync.js";
@@ -15,6 +15,7 @@ import { sectionOrder, getActiveDetails, sectionLines } from "./summary.js";
 import { mergeEntries, sameEntryContent } from "./merge.js";
 import { cycleStatus, periodCovering } from "./cycle.js";
 import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
+import { listItems, addItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { openSheet, choose } from "./ui.js";
 
 function clone(v) { return JSON.parse(JSON.stringify(v)); }
@@ -53,6 +54,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     snapshot: null,
     editSeq: 0,
     periods: [],
+    cabinet: [],
   };
   let loadSeq = 0;
 
@@ -95,7 +97,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
   function currentOrder() {
     return sectionOrder(state.answers.meta.cyclePhase);
   }
-  function firstIncompleteId(order) { return order.find((id) => !state.done.has(id)); }
+  function flowOrder() { return currentOrder().filter((id) => !OUT_OF_FLOW.includes(id)); }
+  function firstIncompleteId(order) { return order.filter((id) => !OUT_OF_FLOW.includes(id)).find((id) => !state.done.has(id)); }
 
   function markDirty() { state.dirty = true; state.editSeq++; }
   function fieldValue(secId, fieldId) { return state.answers[secId][fieldId]; }
@@ -195,9 +198,15 @@ export function mountDailyLog(root, { onSaveStatus }) {
       const v = state.answers[secId][k];
       return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== "" && v !== null);
     }).length;
-    const tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
+    let tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
+    if (sec.dynamic === "cabinet") {
+      const n = (state.answers.cabinet.taken || []).length;
+      tag = n ? n + " " + T("項||taken") : T("今天沒有服用||none today");
+    }
     let body = "";
-    if (isExpanded) {
+    if (isExpanded && sec.dynamic === "cabinet") {
+      body = `<div class="sec-body">${renderCabinetBody()}</div>`;
+    } else if (isExpanded) {
       body = `<div class="sec-body">` + sec.fields.map((f) => renderField(secId, f)).join("") +
         `<div class="btnrow"><button class="btn accent" data-action="done" data-sec="${secId}">${T("完成本節，繼續下一節||Done, next section")}</button></div></div>`;
     }
@@ -218,6 +227,103 @@ export function mountDailyLog(root, { onSaveStatus }) {
     if (s.stats.count) text += " · " + T("平均週期||Average cycle ") + " " + s.stats.average + " " + T("天||days");
     if (s.inPeriod) text += " · " + T("經期中||On period");
     return text.replace(/\s+/g, " ").trim();
+  }
+
+  // The cabinet's choices are the user's own items, so this section is built
+  // here rather than from SCHEMA fields. It stores the names taken, which
+  // keeps a past day readable after an item is renamed or removed.
+  function renderCabinetBody() {
+    const taken = state.answers.cabinet.taken || [];
+    const items = state.cabinet;
+    const groups = Object.keys(KINDS)
+      .map((kind) => ({ kind, list: items.filter((i) => i.kind === kind) }))
+      .filter((g) => g.list.length);
+    const list = groups.map((g) => `
+      <div class="cab-group">
+        <div class="q">${T(KINDS[g.kind])}</div>
+        <div class="opts">${g.list.map((i) => {
+          const on = taken.includes(i.name);
+          const note = i.schedule === "as-needed" ? ` <span class="cab-tag">${T(SCHEDULES["as-needed"])}</span>` : "";
+          return `<button type="button" class="opt${on ? " on" : ""}" data-cab-take="${escAttr(i.name)}"
+            title="${escAttr(i.ingredients || "")}">${escHtml(i.name)}${note}</button>`;
+        }).join("")}</div>
+      </div>`).join("");
+    // Names recorded on this day that are no longer in the cabinet stay tickable.
+    const extras = taken.filter((name) => !items.some((i) => i.name === name));
+    const extraHtml = extras.length ? `<div class="cab-group"><div class="q">${T("已不在藥櫃中||No longer in the cabinet")}</div>
+      <div class="opts">${extras.map((name) => `<button type="button" class="opt on" data-cab-take="${escAttr(name)}">${escHtml(name)}</button>`).join("")}</div></div>` : "";
+    const empty = !items.length && !extras.length
+      ? `<p class="settings-hint">${T("藥櫃還是空的。加入你有的茶飲或保健品，分析時就能從你手邊有的東西建議。||Your cabinet is empty. Add the teas and supplements you have, so the analysis can suggest from what's already at hand.")}</p>`
+      : "";
+    return `${empty}${list}${extraHtml}
+      <div class="field"><label class="q">${T("備註||Notes")}</label>
+        <textarea data-sec="cabinet" data-field="notes" data-type="text">${escHtml(state.answers.cabinet.notes || "")}</textarea></div>
+      <div class="btnrow">
+        <button type="button" class="btn" data-cab-add="1">${T("新增品項||Add an item")}</button>
+        <button type="button" class="btn ghost" data-action="collapse" data-sec="cabinet">${T("收合||Collapse")}</button>
+      </div>`;
+  }
+
+  function openCabinetSheet() {
+    openSheet((sheet, close) => {
+      sheet.innerHTML = `<h2>${T("新增到藥櫃||Add to your cabinet")}</h2>
+        <form id="cabForm">
+          <label for="cabName">${T("名稱||Name")}</label>
+          <input type="text" id="cabName" required placeholder="${T("例如：紅棗枸杞茶||e.g. red date & goji tea")}">
+          <label for="cabKind">${T("類型||Type")}</label>
+          <div class="opts" id="cabKind">${Object.entries(KINDS).map(([k, label], i) =>
+            `<button type="button" class="opt${i === 0 ? " on" : ""}" data-kind="${k}">${T(label)}</button>`).join("")}</div>
+          <label for="cabSchedule">${T("頻率||How often")}</label>
+          <div class="opts" id="cabSchedule">${Object.entries(SCHEDULES).map(([k, label], i) =>
+            `<button type="button" class="opt${i === 0 ? " on" : ""}" data-schedule="${k}">${T(label)}</button>`).join("")}</div>
+          <label for="cabIngredients">${T("成分（名稱看不出來時才需要）||Ingredients (only if the name doesn't say)")}</label>
+          <input type="text" id="cabIngredients" placeholder="${T("例如：黃耆、當歸、紅棗||e.g. astragalus, angelica, red dates")}">
+          <div class="settings-status error" id="cabStatus"></div>
+          <div class="btnrow">
+            <button type="submit" class="btn accent">${T("加入||Add")}</button>
+            <button type="button" class="btn ghost" data-close="1">${T("取消||Cancel")}</button>
+          </div>
+        </form>`;
+      sheet.addEventListener("click", (e) => {
+        const kind = e.target.closest("[data-kind]");
+        if (kind) { sheet.querySelectorAll("[data-kind]").forEach((b) => b.classList.toggle("on", b === kind)); return; }
+        const sch = e.target.closest("[data-schedule]");
+        if (sch) { sheet.querySelectorAll("[data-schedule]").forEach((b) => b.classList.toggle("on", b === sch)); return; }
+        if (e.target.closest("[data-close]")) close();
+      });
+      sheet.querySelector("#cabForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const result = await addItem({
+          name: sheet.querySelector("#cabName").value,
+          kind: sheet.querySelector("#cabKind .on")?.dataset.kind,
+          schedule: sheet.querySelector("#cabSchedule .on")?.dataset.schedule,
+          ingredients: sheet.querySelector("#cabIngredients").value,
+        });
+        if (!result.ok) {
+          const status = sheet.querySelector("#cabStatus");
+          status.classList.add("show");
+          status.textContent = result.error === "duplicate"
+            ? T("藥櫃裡已經有同名的品項。||An item with that name is already in your cabinet.")
+            : T("請輸入名稱。||Please enter a name.");
+          return;
+        }
+        close();
+        await refreshCabinet();
+        // A newly added item is almost always one being taken today.
+        toggleCabinetItem(result.item.name);
+      });
+      sheet.querySelector("#cabName").focus({ preventScroll: true });
+    });
+  }
+
+  function toggleCabinetItem(name) {
+    const taken = (state.answers.cabinet.taken || []).slice();
+    const idx = taken.indexOf(name);
+    if (idx > -1) taken.splice(idx, 1); else taken.push(name);
+    state.answers.cabinet.taken = taken;
+    markDirty();
+    renderApp();
+    scheduleAutoSave();
   }
 
   function renderCycleField() {
@@ -285,8 +391,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
     state.enteredIds.clear();
     $("#dateInput").value = state.date;
     $("#dateInput").max = todayStr();
-    const doneCount = order.filter((id) => state.done.has(id)).length;
-    $("#progressText").textContent = `${T("已完成的段落||Sections done")} ${doneCount} / ${order.length}`;
+    const flow = flowOrder();
+    const doneCount = flow.filter((id) => state.done.has(id)).length;
+    $("#progressText").textContent = `${T("已完成的段落||Sections done")} ${doneCount} / ${flow.length}`;
 
     onSaveStatus(state.dirty ? "saving" : "saved");
   }
@@ -420,6 +527,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
       saveCurrent();
       return;
     }
+    const take = e.target.closest("[data-cab-take]");
+    if (take) { toggleCabinetItem(take.dataset.cabTake); return; }
+    if (e.target.closest("[data-cab-add]")) { openCabinetSheet(); return; }
+    const collapse = e.target.closest('[data-action="collapse"]');
+    if (collapse) { state.expanded.delete(collapse.dataset.sec); renderApp(); return; }
     const opt = e.target.closest(".opt");
     if (opt && opt.dataset.type) {
       const secId = opt.dataset.sec, fieldId = opt.dataset.field, val = opt.dataset.value, type = opt.dataset.type;
@@ -487,6 +599,14 @@ export function mountDailyLog(root, { onSaveStatus }) {
   function buildSummary() {
     const order = currentOrder();
     let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
+    // The cycle day used to be typed by hand; it is computed now, so the
+    // analysis still gets it.
+    const cyc = cycleStatus(state.periods, state.date);
+    if (cyc.hasData) {
+      out += T("週期||Cycle") + "：" + T("第||day ") + cyc.cycleDay + T("天||")
+        + (cyc.stats.count ? `（${T("平均||average ")}${cyc.stats.average}${T("天||days")}）` : "")
+        + (cyc.inPeriod ? "，" + T("經期中||on period") : "") + "\n";
+    }
     out += T("整體感覺||Overall mood") + "：" + (state.answers.meta.moodRating ? T(MOOD_WORDS[state.answers.meta.moodRating - 1]) : "") + "\n\n";
     order.forEach((secId) => {
       const lines = sectionLines(secId, state.answers[secId]);
@@ -494,6 +614,13 @@ export function mountDailyLog(root, { onSaveStatus }) {
         out += T(SCHEMA[secId].title) + "\n" + lines.map((l) => l.label + "：" + l.text).join("\n") + "\n\n";
       }
     });
+    // What's in the cabinet, so the analysis can suggest from what you have.
+    if (state.cabinet.length) {
+      out += T("藥櫃（手邊有的）||Cabinet (what I have)") + "\n";
+      out += state.cabinet.map((i) => "- " + i.name
+        + (i.ingredients ? `（${i.ingredients}）` : "")
+        + (i.schedule === "as-needed" ? "［" + T(SCHEDULES["as-needed"]) + "］" : "")).join("\n") + "\n";
+    }
     return out.trim() + "\n";
   }
 
@@ -706,12 +833,18 @@ export function mountDailyLog(root, { onSaveStatus }) {
     state.periods = (await getCycle()).periods || [];
   }
 
+  async function refreshCabinet() {
+    state.cabinet = await listItems();
+    renderApp();
+  }
+
   // Changes from sync, Home, the calendar or an amendment.
   window.addEventListener("tcm:data-changed", async (e) => {
     const { dates = [], cycle } = e.detail || {};
     if (cycle) {
       await refreshPeriods();
-      renderCycleField();
+      state.cabinet = await listItems();
+      renderApp();
     }
     if (!dates.includes(state.date)) return;
     // Unsaved edits on screen: the next save merges the new version in.
@@ -722,7 +855,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
   });
 
   renderApp();
-  refreshPeriods().then(() => loadDate(state.date));
+  Promise.all([refreshPeriods(), listItems().then((items) => { state.cabinet = items; })])
+    .then(() => loadDate(state.date));
 
   return {
     refreshLang: () => renderApp(),

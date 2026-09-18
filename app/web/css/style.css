@@ -393,3 +393,10 @@ body.connect-open { overflow: hidden; }
 .import-bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
 .import-review { margin-top: 14px; font-size: 0.86rem; }
 .import-review p { margin: 0 0 6px; }
+
+/* ---------- Cabinet ---------- */
+.cab-group { margin-bottom: 14px; }
+.cab-group .q { font-size: 0.78rem; color: var(--ink-soft); font-weight: 600; margin-bottom: 6px; }
+.cab-tag { font-size: 0.66rem; opacity: .7; margin-left: 4px; }
+.cabinet-list .period-dates { font-variant-numeric: normal; }
+.modal .opts { margin-bottom: 4px; }

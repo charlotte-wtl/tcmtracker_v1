@@ -79,19 +79,27 @@ export function sameEntryContent(a, b) {
   return same(a?.answers, b?.answers) && same([...(a?.done || [])].sort(), [...(b?.done || [])].sort());
 }
 
-// cycle.json: periods are keyed by start date and each carries updatedAt, so a
-// merge keeps the newer record per start. Deleting sets deleted:true rather
-// than removing the record, so a deletion on one device beats an old copy on
-// another instead of being resurrected by it.
-export function mergeCycle(local, remote) {
-  const byStart = new Map();
-  [...(remote?.periods || []), ...(local?.periods || [])].forEach((p) => {
-    const cur = byStart.get(p.start);
-    if (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) byStart.set(p.start, p);
+// Record lists (periods keyed by start, cabinet items keyed by id) each carry
+// updatedAt, so a merge keeps the newer record per key. Deleting sets
+// deleted:true rather than removing the record, so a deletion on one device
+// beats an old copy on another instead of being resurrected by it.
+function mergeRecords(localList = [], remoteList = [], key) {
+  const byKey = new Map();
+  [...remoteList, ...localList].forEach((r) => {
+    const cur = byKey.get(r[key]);
+    if (!cur || (r.updatedAt || 0) >= (cur.updatedAt || 0)) byKey.set(r[key], r);
   });
+  return [...byKey.values()].sort((a, b) => (a[key] < b[key] ? -1 : 1));
+}
+
+export function mergeCycle(local, remote) {
   const spotting = new Set([...(remote?.spotting || []), ...(local?.spotting || [])]);
   return {
-    periods: [...byStart.values()].sort((a, b) => (a.start < b.start ? -1 : 1)),
+    periods: mergeRecords(local?.periods, remote?.periods, "start"),
     spotting: [...spotting].sort(),
   };
+}
+
+export function mergeCabinet(local, remote) {
+  return { items: mergeRecords(local?.items, remote?.items, "id") };
 }

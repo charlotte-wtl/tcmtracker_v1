@@ -14,7 +14,7 @@
 import {
   getMeta, setMeta, deleteMeta, getEntry, putEntry, deleteEntry, getAllEntries, clearEntries,
 } from "./db.js";
-import { mergeEntries, mergeCycle, sameEntryContent } from "./merge.js";
+import { mergeEntries, mergeCycle, mergeCabinet, sameEntryContent } from "./merge.js";
 import { todayStr, shiftDate } from "./dates.js";
 
 const PERSISTED_KEYS = ["gh_owner", "gh_repo", "gh_branch", "gh_path_prefix"];
@@ -27,6 +27,7 @@ const DEFAULTS = {
 const TOKEN_SESSION_KEY = "tcm_gh_token";
 const RECENT_DAYS = 14;
 const CYCLE_FILE = "cycle.json";
+const CABINET_FILE = "cabinet.json";
 const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.json$/;
 
 /* ---------------- Status + change events ---------------- */
@@ -360,52 +361,70 @@ export async function fetchDay(date) {
   }
 }
 
-/* ---------------- Cycle (cycle.json) ---------------- */
+/* ---------------- Whole-file documents (cycle.json, cabinet.json) ----------------
+   Unlike days, these are single small files each device edits in place, so
+   they follow the same sha-checked write + merge path as a day. */
 
-export async function getCycle() {
-  return (await getMeta("cycle")) || { periods: [], spotting: [], updatedAt: 0, syncedAt: 0 };
+const DOCS = {
+  cycle: { file: CYCLE_FILE, metaKey: "cycle", empty: { periods: [], spotting: [] }, merge: mergeCycle, fields: ["periods", "spotting"] },
+  cabinet: { file: CABINET_FILE, metaKey: "cabinet", empty: { items: [] }, merge: mergeCabinet, fields: ["items"] },
+};
+
+async function getDoc(kind) {
+  const def = DOCS[kind];
+  return (await getMeta(def.metaKey)) || { ...def.empty, updatedAt: 0, syncedAt: 0 };
 }
 
-export async function saveCycle(data) {
-  const cur = await getCycle();
-  const next = { ...cur, periods: data.periods, spotting: data.spotting || cur.spotting || [], updatedAt: Date.now() };
-  await setMeta("cycle", next);
+async function saveDoc(kind, data) {
+  const def = DOCS[kind];
+  const cur = await getDoc(kind);
+  const next = { ...cur };
+  def.fields.forEach((f) => { next[f] = data[f] !== undefined ? data[f] : (cur[f] || def.empty[f]); });
+  next.updatedAt = Date.now();
+  await setMeta(def.metaKey, next);
   announce([], true);
-  queueCyclePush();
+  queueDocPush(kind);
   return next;
 }
 
-export function queueCyclePush() {
-  return enqueue("cycle", pushCycle);
+export const getCycle = () => getDoc("cycle");
+export const saveCycle = (data) => saveDoc("cycle", data);
+export const getCabinet = () => getDoc("cabinet");
+export const saveCabinet = (data) => saveDoc("cabinet", data);
+
+export function queueDocPush(kind) {
+  return enqueue(kind, () => pushDoc(kind));
 }
 
-async function pushCycle() {
+async function pushDoc(kind) {
   if ((await configState()) !== "ready") return { ok: false, error: "not-ready" };
+  const def = DOCS[kind];
   const cfg = await getConfig();
   const userId = await getUserId();
   for (let attempt = 0; attempt < 3; attempt++) {
-    const cycle = await getCycle();
-    if (!isDirty(cycle)) return { ok: true };
+    const doc = await getDoc(kind);
+    if (!isDirty(doc)) return { ok: true };
     status("syncing");
-    const sha = cycle.remoteUserId === userId ? cycle.remoteSha : undefined;
+    const sha = doc.remoteUserId === userId ? doc.remoteSha : undefined;
+    const body = { userId };
+    def.fields.forEach((f) => { body[f] = doc[f] || def.empty[f]; });
     let result;
     try {
-      result = await writeFile(cfg, userPath(cfg, userId, CYCLE_FILE),
-        { userId, periods: cycle.periods, spotting: cycle.spotting || [] }, sha, `${userId}: update cycle`);
+      result = await writeFile(cfg, userPath(cfg, userId, def.file), body, sha, `${userId}: update ${kind}`);
     } catch (e) {
       result = { ok: false, error: networkError(e) };
     }
     if (result.ok) {
-      const now = await getCycle();
-      await setMeta("cycle", { ...now, remoteSha: result.sha, remoteUserId: userId, syncedAt: cycle.updatedAt });
-      await noteRemoteFile(CYCLE_FILE, result.sha, userId);
+      const now = await getDoc(kind);
+      await setMeta(def.metaKey, { ...now, remoteSha: result.sha, remoteUserId: userId, syncedAt: doc.updatedAt });
+      await noteRemoteFile(def.file, result.sha, userId);
       status(isDirty(now) ? "syncing" : "synced");
       return { ok: true };
     }
     if (!result.conflict) { status("error", result.error); return result; }
     try {
-      const remote = await readFile(cfg, userPath(cfg, userId, CYCLE_FILE));
-      await applyRemoteCycle(remote ? remote.sha : undefined, remote ? remote.data : { periods: [], spotting: [] }, userId);
+      const remote = await readFile(cfg, userPath(cfg, userId, def.file));
+      await applyRemoteDoc(kind, remote ? remote.sha : undefined, remote ? remote.data : def.empty, userId);
     } catch (e) {
       status("error", networkError(e));
       return { ok: false, error: networkError(e) };
@@ -414,15 +433,18 @@ async function pushCycle() {
   return { ok: false, error: "conflict-retries" };
 }
 
-async function applyRemoteCycle(sha, remote, userId) {
-  const local = await getCycle();
+async function applyRemoteDoc(kind, sha, remote, userId) {
+  const def = DOCS[kind];
+  const local = await getDoc(kind);
   if (sha && local.remoteSha === sha && local.remoteUserId === userId) return false;
+  const stamp = Date.now();
   if (!isDirty(local)) {
-    const stamp = Date.now();
-    await setMeta("cycle", { periods: remote.periods || [], spotting: remote.spotting || [], updatedAt: stamp, syncedAt: stamp, remoteSha: sha, remoteUserId: userId });
+    const next = { updatedAt: stamp, syncedAt: stamp, remoteSha: sha, remoteUserId: userId };
+    def.fields.forEach((f) => { next[f] = remote[f] || def.empty[f]; });
+    await setMeta(def.metaKey, next);
   } else {
-    const merged = mergeCycle(local, remote);
-    await setMeta("cycle", { ...local, ...merged, remoteSha: sha, remoteUserId: userId, updatedAt: Math.max(Date.now(), (local.syncedAt || 0) + 1) });
+    const merged = def.merge(local, remote);
+    await setMeta(def.metaKey, { ...local, ...merged, remoteSha: sha, remoteUserId: userId, updatedAt: Math.max(stamp, (local.syncedAt || 0) + 1) });
   }
   announce([], true);
   return true;
@@ -476,7 +498,10 @@ async function doPull() {
       }
     }
 
-    if (files[CYCLE_FILE]) await applyRemoteCycle(files[CYCLE_FILE], await readBlob(cfg, files[CYCLE_FILE]), userId);
+    for (const kind of Object.keys(DOCS)) {
+      const sha = files[DOCS[kind].file];
+      if (sha) await applyRemoteDoc(kind, sha, await readBlob(cfg, sha), userId);
+    }
 
     announce(changed);
     await syncAllPending();
@@ -491,17 +516,16 @@ async function doPull() {
 export async function syncAllPending() {
   if ((await configState()) !== "ready") return;
   const all = await getAllEntries();
-  await Promise.all([
-    ...all.filter(isDirty).map((e) => queuePush(e.date)),
-    isDirty(await getCycle()) ? queueCyclePush() : Promise.resolve(),
-  ]);
+  const docs = await Promise.all(Object.keys(DOCS).map(async (kind) => (isDirty(await getDoc(kind)) ? queueDocPush(kind) : null)));
+  await Promise.all([...all.filter(isDirty).map((e) => queuePush(e.date)), ...docs.filter(Boolean)]);
 }
 
 /* ---------------- Account ---------------- */
 
 export async function hasUnsyncedData() {
   const all = await getAllEntries();
-  return all.some(isDirty) || isDirty(await getCycle());
+  const docs = await Promise.all(Object.keys(DOCS).map((kind) => getDoc(kind)));
+  return all.some(isDirty) || docs.some(isDirty);
 }
 
 // Points this device at a user id. Switching to a different id clears the
@@ -511,7 +535,7 @@ export async function adoptUserId(id) {
   if (current && current !== id) {
     if (await hasUnsyncedData()) return { ok: false, error: "unsynced-other-user" };
     await clearEntries();
-    await deleteMeta("cycle");
+    await Promise.all(Object.values(DOCS).map((d) => deleteMeta(d.metaKey)));
     await deleteMeta("remote_index");
     remoteIndex = null;
   }
