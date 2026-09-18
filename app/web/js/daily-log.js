@@ -703,9 +703,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
       out += Object.keys(KINDS).map((kind) => {
         const list = state.cabinet.filter((i) => i.kind === kind);
         if (!list.length) return null;
+        // Every drink is "as needed" by nature, so the tag would say nothing
+        // on a tea; on a supplement it marks the ones you don't take daily.
         return T(KINDS[kind]) + "：" + list.map((i) => i.name
           + (i.ingredients ? `（${i.ingredients}）` : "")
-          + (i.schedule === "as-needed" ? "［" + T(SCHEDULES["as-needed"]) + "］" : "")).join("、");
+          + (i.schedule === "as-needed" && kind !== "tea" ? "［" + T(SCHEDULES["as-needed"]) + "］" : "")).join("、");
       }).filter(Boolean).join("\n") + "\n";
     }
     return out.trim() + "\n";
