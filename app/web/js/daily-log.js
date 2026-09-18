@@ -6,7 +6,7 @@
 
 import { T, getLang } from "./i18n.js";
 import {
-  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, OUT_OF_FLOW, NONE_MARKERS, SECTION_COLORS,
+  SCHEMA, CYCLE_FIELD, MOOD_WORDS, ALWAYS_ON, NONE_MARKERS, SECTION_COLORS,
 } from "./schema.js";
 import { getEntry, putEntry } from "./db.js";
 import { queuePush, fetchDay, getCycle } from "./sync.js";
@@ -26,8 +26,10 @@ const TONE_VARS = {
   rose: "var(--tone-rose)",
 };
 
+// `cabinet` is not a section any more — supplements are ticked inside 8. 飲食 —
+// but it stays its own key so days recorded before the move still read back.
 function blankAnswers() {
-  const a = { meta: {} };
+  const a = { meta: {}, cabinet: {} };
   Object.keys(SCHEMA).forEach((secId) => { a[secId] = {}; });
   return a;
 }
@@ -37,6 +39,7 @@ function blankAnswers() {
 function withAllSections(answers) {
   const a = answers || {};
   if (!a.meta) a.meta = {};
+  if (!a.cabinet) a.cabinet = {};
   Object.keys(SCHEMA).forEach((secId) => { if (!a[secId]) a[secId] = {}; });
   return a;
 }
@@ -97,8 +100,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
   function currentOrder() {
     return sectionOrder(state.answers.meta.cyclePhase);
   }
-  function flowOrder() { return currentOrder().filter((id) => !OUT_OF_FLOW.includes(id)); }
-  function firstIncompleteId(order) { return order.filter((id) => !OUT_OF_FLOW.includes(id)).find((id) => !state.done.has(id)); }
+  function flowOrder() { return currentOrder(); }
+  function firstIncompleteId(order) { return order.find((id) => !state.done.has(id)); }
 
   function markDirty() { state.dirty = true; state.editSeq++; }
   function fieldValue(secId, fieldId) { return state.answers[secId][fieldId]; }
@@ -189,8 +192,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
       ? `<textarea data-sec="${secId}" data-field="${field.id}" data-type="text">${escHtml(value || "")}</textarea>`
       : `<input type="text" data-sec="${secId}" data-field="${field.id}" data-type="text"${field.suggest ? ` data-suggest="${field.suggest}"` : ""} value="${escAttr(value || "")}">`;
     else if (field.type === "number") control = `<input type="number" data-sec="${secId}" data-field="${field.id}" data-type="number" value="${escAttr(value || "")}">`;
+    else if (field.type === "cabinet") control = renderSupplementTicks();
     if (field.type === "multi" && field.perItemSeverity) control += renderPerItemSeverity(secId, field, value);
-    if (field.suggest === "tea") control += renderTeaSuggest(value);
+    if (field.suggest === "tea") control += renderTeaSearch();
     return `<div class="field"><label class="q">${T(field.label)}</label>${control}${renderDetails(secId, field, value)}</div>`;
   }
 
@@ -202,15 +206,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
       const v = state.answers[secId][k];
       return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== "" && v !== null);
     }).length;
-    let tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
-    if (sec.dynamic === "cabinet") {
-      const n = (state.answers.cabinet.taken || []).length;
-      tag = n ? n + " " + T("項||taken") : T("今天沒有服用||none today");
-    }
+    const tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
     let body = "";
-    if (isExpanded && sec.dynamic === "cabinet") {
-      body = `<div class="sec-body">${renderCabinetBody()}</div>`;
-    } else if (isExpanded) {
+    if (isExpanded) {
       body = `<div class="sec-body">` + sec.fields.map((f) => renderField(secId, f)).join("") +
         `<div class="btnrow"><button class="btn accent" data-action="done" data-sec="${secId}">${T("完成本節，繼續下一節||Done, next section")}</button></div></div>`;
     }
@@ -233,112 +231,87 @@ export function mountDailyLog(root, { onSaveStatus }) {
     return text.replace(/\s+/g, " ").trim();
   }
 
-  /* ---------------- Teas: searched from the beverage field ---------------- */
+  /* ------------- Cabinet: supplements ticked, teas searched ------------- */
 
-  // A drink belongs in the diet section, so teas are never ticked in the
-  // cabinet. They are offered here instead: the last comma-separated piece of
-  // what you typed is the search, and the rest of the line is left alone.
-  function beverageQuery(text) {
-    const parts = String(text || "").split(SEP_RE);
-    return parts[parts.length - 1].trim();
+  // 中藥 is deliberately left out of the daily log; teas are picked under 飲品.
+  function supplementItems() {
+    return state.cabinet.filter((i) => i.kind === "supplement" || i.kind === "other");
   }
 
-  function renderTeaSuggest(value) {
+  function takenChip(name, on) {
+    return `<button type="button" class="opt${on ? " on" : ""}" data-cab-take="${escAttr(name)}">${escHtml(name)}</button>`;
+  }
+
+  function renderSupplementTicks() {
+    const taken = state.answers.cabinet.taken || [];
+    const items = supplementItems();
+    // "All" means the routine ones. Something you only take when needed is
+    // never swept in by one tap; it stays a deliberate choice.
+    const daily = items.filter((i) => i.schedule !== "as-needed");
+    const allOn = daily.length > 0 && daily.every((i) => taken.includes(i.name));
+    const chips = daily.length > 1
+      ? [`<button type="button" class="opt${allOn ? " on" : ""}" data-cab-all="1">${T("全部||All")}</button>`]
+      : [];
+    items.forEach((i) => {
+      const note = i.schedule === "as-needed" ? ` <span class="cab-tag">${T(SCHEDULES["as-needed"])}</span>` : "";
+      chips.push(`<button type="button" class="opt${taken.includes(i.name) ? " on" : ""}" data-cab-take="${escAttr(i.name)}"
+        title="${escAttr(i.ingredients || "")}">${escHtml(i.name)}${note}</button>`);
+    });
+    // Anything recorded on this day that isn't offered above — a tea ticked
+    // before teas moved to 飲品, or an item since removed — stays editable.
+    taken.filter((n) => !items.some((i) => i.name === n)).forEach((n) => chips.push(takenChip(n, true)));
+    chips.push(`<button type="button" class="opt ghost" data-cab-add="1">＋${T("新增||Add")}</button>`);
+    return `<div class="opts">${chips.join("")}</div>`;
+  }
+
+  // The beverage box is yours to type in; this searches the cabinet's teas
+  // separately, so typing "黑咖啡" there is never treated as a failed search.
+  let teaQuery = "";
+
+  function renderTeaChips() {
     const teas = state.cabinet.filter((i) => i.kind === "tea");
-    const typed = beverageQuery(value);
+    const typed = teaQuery.trim();
     const q = typed.toLowerCase();
-    // A finished name is not a search: after picking a tea, show the rest again.
-    const exact = teas.some((i) => i.name.toLowerCase() === q);
-    const inText = (name) => String(value || "").split(SEP_RE).map((x) => x.trim()).includes(name);
-    let matches = teas.filter((i) => exact || !q || i.name.toLowerCase().includes(q));
-    // A drink that isn't in your cabinet — coffee, water — shouldn't hide the
-    // teas that are: a search with no hits falls back to the whole shelf.
+    const inText = () => String(fieldValue("diet", "beverage") || "").split(SEP_RE).map((x) => x.trim());
+    const already = inText();
+    let matches = teas.filter((i) => !q || i.name.toLowerCase().includes(q));
+    // A search with no hits shouldn't hide the shelf.
     const noMatch = !!q && !matches.length;
     if (noMatch) matches = teas;
-    const chips = matches.map((i) => `<button type="button" class="opt${inText(i.name) ? " on" : ""}" data-tea-pick="${escAttr(i.name)}"
-        title="${escAttr(i.ingredients || "")}">${escHtml(i.name)}</button>`);
-    if (typed && !exact) {
+    const chips = matches.map((i) => `<button type="button" class="opt${already.includes(i.name) ? " on" : ""}"
+      data-tea-pick="${escAttr(i.name)}" title="${escAttr(i.ingredients || "")}">${escHtml(i.name)}</button>`);
+    if (typed && !teas.some((i) => i.name.toLowerCase() === q)) {
+      // Offer it first only when nothing matched: otherwise the matches lead.
       const add = `<button type="button" class="opt ghost" data-tea-add="${escAttr(typed)}">＋${T("加入藥櫃||Add to cabinet")}「${escHtml(typed)}」</button>`;
       if (noMatch) chips.unshift(add); else chips.push(add);
     }
     return `<div class="suggest">${chips.length ? `<div class="opts">${chips.join("")}</div>` : ""}</div>`;
   }
 
-  // Tapping a tea completes what you were typing rather than appending to it,
-  // so searching "紅棗" and tapping the match leaves one clean name.
-  // `keep` is used when the name was just added to the cabinet from this very
-  // field: it is already typed there, and must not be toggled back out.
+  function renderTeaSearch() {
+    return `<div class="tea-search">
+      <input type="search" class="tea-q" data-tea-search="1" autocomplete="off"
+        placeholder="${T("搜尋藥櫃裡的茶飲||Search your cabinet teas")}" value="${escAttr(teaQuery)}">
+      ${renderTeaChips()}
+    </div>`;
+  }
+
+  // Picking a tea adds it to what you already wrote; picking it again takes it
+  // back out. `keep` is used when the name was just added to the cabinet from
+  // this field, where it is already typed and must not be toggled away.
   function applyTeaPick(name, keep = false) {
     const raw = String(fieldValue("diet", "beverage") || "");
-    let parts = raw.split(SEP_RE).map((x) => x.trim());
-    const last = parts[parts.length - 1] || "";
-    if (parts.includes(name)) { if (keep) { renderApp(); return; } parts = parts.filter((x) => x !== name); }
-    else if (!last || name.toLowerCase().includes(last.toLowerCase())) parts[parts.length - 1] = name;
-    else parts.push(name);
-    setFieldValue("diet", "beverage", parts.filter(Boolean).join("、"));
+    let parts = raw.split(SEP_RE).map((x) => x.trim()).filter(Boolean);
+    if (parts.includes(name)) {
+      if (keep) { renderApp(); return; }
+      parts = parts.filter((x) => x !== name);
+    } else parts.push(name);
+    setFieldValue("diet", "beverage", parts.join("、"));
     markDirty();
     renderApp();
     scheduleAutoSave();
   }
 
-  // The cabinet's choices are the user's own items, so this section is built
-  // here rather than from SCHEMA fields. It stores the names taken, which
-  // keeps a past day readable after an item is renamed or removed.
-  function renderCabinetBody() {
-    const taken = state.answers.cabinet.taken || [];
-    const items = state.cabinet;
-    // Teas are left out on purpose: you record a drink in 8. 飲食 → 飲品.
-    const groups = Object.keys(KINDS).filter((k) => k !== "tea")
-      .map((kind) => ({ kind, list: items.filter((i) => i.kind === kind) }))
-      .filter((g) => g.list.length);
-    const list = groups.map((g) => {
-      // "All" means the routine ones. Something you only take when needed is
-      // never swept in by one tap; it stays a deliberate choice.
-      const daily = g.list.filter((i) => i.schedule !== "as-needed");
-      const allOn = daily.length > 0 && daily.every((i) => taken.includes(i.name));
-      const allBtn = daily.length > 1
-        ? `<button type="button" class="opt${allOn ? " on" : ""}" data-cab-all="${g.kind}">${T("全部||All")}</button>`
-        : "";
-      return `
-      <div class="cab-group">
-        <div class="q">${T(KINDS[g.kind])}</div>
-        <div class="opts">${allBtn}${g.list.map((i) => {
-          const on = taken.includes(i.name);
-          const note = i.schedule === "as-needed" ? ` <span class="cab-tag">${T(SCHEDULES["as-needed"])}</span>` : "";
-          return `<button type="button" class="opt${on ? " on" : ""}" data-cab-take="${escAttr(i.name)}"
-            title="${escAttr(i.ingredients || "")}">${escHtml(i.name)}${note}</button>`;
-        }).join("")}</div>
-      </div>`;
-    }).join("");
-    const extraGroup = (title, names, hint) => names.length ? `<div class="cab-group"><div class="q">${title}</div>
-      <div class="opts">${names.map((name) => `<button type="button" class="opt on" data-cab-take="${escAttr(name)}">${escHtml(name)}</button>`).join("")}</div>
-      ${hint ? `<p class="settings-hint">${hint}</p>` : ""}</div>` : "";
-    // Teas ticked before this split, and names recorded on this day that are no
-    // longer in the cabinet, stay visible so a past day can still be corrected.
-    const shown = groups.flatMap((g) => g.list.map((i) => i.name));
-    const teaTaken = taken.filter((n) => items.some((i) => i.name === n && i.kind === "tea"));
-    const gone = taken.filter((n) => !shown.includes(n) && !teaTaken.includes(n));
-    const teaCount = items.filter((i) => i.kind === "tea").length;
-    const teaHint = teaCount
-      ? `<p class="settings-hint">${T("茶飲記在 8. 飲食 的「飲品」欄：在那裡打字就會出現你的茶。||Teas are recorded in 8. Diet → Beverage: start typing there and yours appear.")}</p>`
-      : "";
-    const empty = !groups.length && !teaTaken.length && !gone.length
-      ? `<p class="settings-hint">${T("藥櫃還是空的。加入你有的保健品、中藥或茶飲，分析時就能從你手邊有的東西建議。||Your cabinet is empty. Add the supplements, herbs and teas you have, so the analysis can suggest from what's already at hand.")}</p>`
-      : "";
-    return `${empty}${list}
-      ${extraGroup(T("茶飲（這天記錄過）||Tea (recorded on this day)"), teaTaken, T("茶飲現在記在飲品欄，這裡只留舊記錄。||Teas now live in the Beverage field; these are older records."))}
-      ${extraGroup(T("已不在藥櫃中||No longer in the cabinet"), gone, "")}
-      ${teaHint}
-      <div class="field"><label class="q">${T("備註||Notes")}</label>
-        <textarea data-sec="cabinet" data-field="notes" data-type="text">${escHtml(state.answers.cabinet.notes || "")}</textarea></div>
-      <div class="btnrow">
-        <button type="button" class="btn" data-cab-add="1">${T("新增品項||Add an item")}</button>
-        <button type="button" class="btn ghost" data-action="collapse" data-sec="cabinet">${T("收合||Collapse")}</button>
-      </div>`;
-  }
-
-  // `prefill` comes from the beverage field's "add to cabinet" chip, which
-  // already knows the name and that it is a tea.
   function openCabinetSheet(prefill = {}) {
     const startKind = prefill.kind || "supplement";
     openSheet((sheet, close) => {
@@ -395,9 +368,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
     });
   }
 
-  // One tap for the routine set of a group; as-needed items stay individual.
-  function toggleAllInKind(kind) {
-    const daily = state.cabinet.filter((i) => i.kind === kind && i.schedule !== "as-needed");
+  // One tap for the routine set; as-needed items stay individual.
+  function toggleAllSupplements() {
+    const daily = supplementItems().filter((i) => i.schedule !== "as-needed");
     const taken = (state.answers.cabinet.taken || []).slice();
     const allOn = daily.every((i) => taken.includes(i.name));
     const names = daily.map((i) => i.name);
@@ -622,8 +595,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     }
     const take = e.target.closest("[data-cab-take]");
     if (take) { toggleCabinetItem(take.dataset.cabTake); return; }
-    const all = e.target.closest("[data-cab-all]");
-    if (all) { toggleAllInKind(all.dataset.cabAll); return; }
+    if (e.target.closest("[data-cab-all]")) { toggleAllSupplements(); return; }
     if (e.target.closest("[data-cab-add]")) { openCabinetSheet(); return; }
     const teaPick = e.target.closest("[data-tea-pick]");
     if (teaPick) { applyTeaPick(teaPick.dataset.teaPick); return; }
@@ -665,6 +637,13 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
   $("#sections").addEventListener("input", (e) => {
     const el = e.target;
+    if (el.dataset.teaSearch) {
+      teaQuery = el.value;
+      const box = el.parentElement.querySelector(".suggest");
+      // Re-filter in place: a full re-render would take the keyboard away.
+      if (box) box.outerHTML = renderTeaChips();
+      return;
+    }
     if (!el.dataset.type) return;
     const secId = el.dataset.sec, fieldId = el.dataset.field;
     if (el.dataset.type === "detailtext") {
@@ -676,10 +655,10 @@ export function mountDailyLog(root, { onSaveStatus }) {
     } else {
       setFieldValue(secId, fieldId, el.value);
     }
-    // Re-filter in place: a full re-render would take the keyboard away mid-word.
+    // What you type as a drink can change which cabinet teas are already listed.
     if (el.dataset.suggest === "tea") {
       const box = el.parentElement.querySelector(".suggest");
-      if (box) box.outerHTML = renderTeaSuggest(el.value);
+      if (box) box.outerHTML = renderTeaChips();
     }
     scheduleAutoSave();
   });
@@ -713,7 +692,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     }
     out += T("整體感覺||Overall mood") + "：" + (state.answers.meta.moodRating ? T(MOOD_WORDS[state.answers.meta.moodRating - 1]) : "") + "\n\n";
     order.forEach((secId) => {
-      const lines = sectionLines(secId, state.answers[secId]);
+      const lines = sectionLines(secId, state.answers[secId], state.answers);
       if (lines.length) {
         out += T(SCHEMA[secId].title) + "\n" + lines.map((l) => l.label + "：" + l.text).join("\n") + "\n\n";
       }

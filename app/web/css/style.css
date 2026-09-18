@@ -400,7 +400,12 @@ body.connect-open { overflow: hidden; }
 .cab-tag { font-size: 0.66rem; opacity: .7; margin-left: 4px; }
 .cabinet-list .period-dates { font-variant-numeric: normal; }
 
-/* Cabinet teas offered under the beverage field as you type. */
+/* Searching the cabinet's teas, under the beverage field. */
+.tea-search { margin-top: 8px; }
+.tea-search .tea-q {
+  width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  border-radius: 9px; padding: 7px 11px; font-size: 0.81rem; font-family: inherit;
+}
 .suggest:not(:empty) { margin-top: 6px; }
 .suggest .opt { font-size: 0.78rem; padding: 5px 10px; }
 .opt.ghost { border-style: dashed; color: var(--ink-soft); }

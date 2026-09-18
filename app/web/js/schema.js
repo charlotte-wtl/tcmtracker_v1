@@ -170,6 +170,10 @@ export const SCHEMA = {
   diet: {
     title: "8. 飲食||8. Diet",
     fields: [
+      // Ticked from your cabinet, not from a fixed list of options: you take
+      // these with a meal, so they belong here rather than in a section of
+      // their own. Rendered by the daily log itself.
+      { id:"supplements", type:"cabinet", label:"保健品||Supplements" },
       { id:"morning", type:"text", label:"早餐||Morning" },
       // Teas you own are offered here as you type: a drink belongs in the diet
       // section, not in the cabinet's tick list.
@@ -181,15 +185,8 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
-  // Rendered by the daily log itself, not from `fields`: the choices are the
-  // user's own cabinet items, which live in cabinet.json.
-  cabinet: {
-    title: "9. 藥櫃||9. Cabinet",
-    dynamic: "cabinet",
-    fields: [],
-  },
   regularday: {
-    title: "10. 平日觀察||10. Regular day",
+    title: "9. 平日觀察||9. Regular day",
     condition: p => p === "平日||Regular day",
     fields: [
       { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
@@ -199,7 +196,7 @@ export const SCHEMA = {
     ]
   },
   preperiod: {
-    title: "10. 經前狀態||10. Pre-period",
+    title: "9. 經前狀態||9. Pre-period",
     condition: p => p === "經前||Pre-period",
     fields: [
       { id:"breastTenderness", type:"yesno", label:"乳房脹痛||Breast tenderness", options:YESNO,
@@ -220,7 +217,7 @@ export const SCHEMA = {
     ]
   },
   period: {
-    title: "11. 經期狀態||11. Period",
+    title: "10. 經期狀態||10. Period",
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
@@ -242,7 +239,7 @@ export const SCHEMA = {
     ]
   },
   postperiod: {
-    title: "12. 經後狀態||12. Post-period",
+    title: "11. 經後狀態||11. Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
       { id:"recoverySpeed", type:"single", label:"精力恢復速度||Energy recovery speed",
@@ -261,11 +258,7 @@ export const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期
   options:["平日||Regular day","經前||Pre-period","經期||Period","經後||Post-period"] };
 export const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
 
-export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet","cabinet"];
-
-// Sections outside the sequential "Done, next section" flow: shown, but never
-// auto-opened and not counted as something to finish each day.
-export const OUT_OF_FLOW = ["cabinet"];
+export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet"];
 export const CONDITIONAL = ["regularday","preperiod","period","postperiod"];
 
 export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
@@ -273,6 +266,6 @@ export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 // Japandi-muted per-section accent tokens — used sparingly (a thin top rule, never a block fill).
 export const SECTION_COLORS = {
   sleep:"mauve", morning:"ochre", tongue:"clay", general:"slate",
-  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose", cabinet:"ochre",
+  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose",
   regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
 };

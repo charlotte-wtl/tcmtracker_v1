@@ -5,14 +5,16 @@
 import { T } from "./i18n.js";
 import { SCHEMA, ALWAYS_ON, CONDITIONAL, NONE_MARKERS, MOOD_WORDS } from "./schema.js";
 
-// The cabinet section stores the names taken, so a day still reads correctly
-// after an item is renamed or removed from the cabinet.
-function cabinetLines(ans = {}) {
+// Supplements are stored under their own key (they used to be their own
+// section) but read out inside the diet section, where they are now ticked.
+// The names taken are stored, so a day still reads correctly after an item is
+// renamed or removed from the cabinet.
+function cabinetLines(cabinet = {}, label) {
   const lines = [];
-  if (Array.isArray(ans.taken) && ans.taken.length) {
-    lines.push({ label: T("今天服用||Taken today"), text: ans.taken.join("、") });
+  if (Array.isArray(cabinet.taken) && cabinet.taken.length) {
+    lines.push({ label, text: cabinet.taken.join("、") });
   }
-  if (ans.notes) lines.push({ label: T("備註||Notes"), text: ans.notes });
+  if (cabinet.notes) lines.push({ label: T("藥櫃備註||Cabinet notes"), text: cabinet.notes });
   return lines;
 }
 
@@ -58,10 +60,10 @@ function summarizeDetailValue(dv) {
 }
 
 // One section's answered fields as [{ label, text }].
-export function sectionLines(secId, ans = {}) {
-  if (SCHEMA[secId].dynamic === "cabinet") return cabinetLines(ans);
+export function sectionLines(secId, ans = {}, all = {}) {
   const lines = [];
   SCHEMA[secId].fields.forEach((f) => {
+    if (f.type === "cabinet") { cabinetLines(all.cabinet, T(f.label)).forEach((l) => lines.push(l)); return; }
     const v = ans[f.id];
     const other = ans[f.id + "__other"];
     const hasValue = isFilled(v);
@@ -92,7 +94,7 @@ export function sectionLines(secId, ans = {}) {
 // not need to be complete.
 export function entryHasData(entry) {
   if (!entry || !entry.answers) return false;
-  const { meta = {}, ...sections } = entry.answers;
+  const { meta = {}, ...sections } = entry.answers;  // `cabinet` counts as a section here
   if (meta.moodRating || meta.cyclePhase) return true;
   return Object.values(sections).some((sec) => sec && Object.values(sec).some(isFilled));
 }
@@ -107,7 +109,7 @@ export function summarizeEntry(entry) {
     doneCount: order.filter((id) => (entry.done || []).includes(id)).length,
     totalCount: order.length,
     sections: order
-      .map((secId) => ({ secId, title: T(SCHEMA[secId].title), lines: sectionLines(secId, answers[secId]) }))
+      .map((secId) => ({ secId, title: T(SCHEMA[secId].title), lines: sectionLines(secId, answers[secId], answers) }))
       .filter((s) => s.lines.length),
   };
 }

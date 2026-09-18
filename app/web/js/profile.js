@@ -57,7 +57,7 @@ export function mountProfile(root, { onConnect }) {
 
       <section class="card settings-form">
         <h2 class="card-title">${T("藥櫃||Cabinet")}</h2>
-        <p class="settings-hint">${T("你手邊有的茶飲、保健品和中藥。保健品和中藥在日誌的「藥櫃」勾選，茶飲在「飲品」欄打字就會出現；分析時會附上整個藥櫃，好從你已經有的東西給建議。||The teas, supplements and herbs you have. Supplements and herbs are ticked in the log's cabinet section; teas come up as you type in the Beverage field. The whole cabinet is attached to the analysis so suggestions come from what you already own.")}</p>
+        <p class="settings-hint">${T("你手邊有的茶飲和保健品。保健品在日誌「8. 飲食」的早餐前勾選，茶飲在飲品欄下方搜尋；分析時會附上整個藥櫃，好從你已經有的東西給建議。||The teas and supplements you have. Supplements are ticked in 8. Diet, just before breakfast; teas are searched under the Beverage field. The whole cabinet is attached to the analysis so suggestions come from what you already own.")}</p>
         ${cabinet.length ? `<ul class="period-list cabinet-list">${cabinet.map((i) => `
           <li>
             <span class="period-dates">${esc(i.name)}</span>
