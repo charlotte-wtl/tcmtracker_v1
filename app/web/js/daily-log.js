@@ -762,17 +762,23 @@ export function mountDailyLog(root, { onSaveStatus }) {
     state.expanded = next ? new Set([next]) : new Set();
   }
 
+  // Two-way link: a day inside a recorded period shows 經期 selected. It is a
+  // suggestion, saved only if the day is edited, and never replaces a phase
+  // you picked yourself.
+  function suggestPhase() {
+    if (state.answers.meta.cyclePhase) return false;
+    if (!periodCovering(state.periods, state.date)) return false;
+    state.answers.meta.cyclePhase = PERIOD_PHASE;
+    return true;
+  }
+
   // Shows a stored day. keepLayout leaves open sections as they are (used when
   // another device's changes arrive for the day already on screen).
   function applyLoaded(data, { keepLayout = false } = {}) {
     state.answers = withAllSections(data ? clone(data.answers || {}) : null);
     state.done = new Set(data?.done || []);
     state.snapshot = { answers: clone(state.answers), done: Array.from(state.done) };
-    // Two-way link: a day inside a recorded period opens with 經期 selected.
-    // It is only saved if the day is edited.
-    if (!state.answers.meta.cyclePhase && periodCovering(state.periods, state.date)) {
-      state.answers.meta.cyclePhase = PERIOD_PHASE;
-    }
+    suggestPhase();
     if (!keepLayout) settleExpanded();
     state.dirty = false;
     renderApp();
@@ -933,6 +939,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
     if (cycle) {
       await refreshPeriods();
       state.cabinet = await listItems();
+      // The day usually opens before sync has brought the period in (you
+      // connect after the log is already on screen), so check again now.
+      suggestPhase();
       renderApp();
     }
     if (!dates.includes(state.date)) return;
