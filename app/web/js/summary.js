@@ -3,7 +3,7 @@
 // what you review is exactly what gets analysed.
 
 import { T } from "./i18n.js";
-import { SCHEMA, ALWAYS_ON, CONDITIONAL, NONE_MARKERS, MOOD_WORDS } from "./schema.js";
+import { SCHEMA, ALWAYS_ON, CONDITIONAL, RETIRED, NONE_MARKERS, MOOD_WORDS } from "./schema.js";
 
 // Supplements are stored under their own key (they used to be their own
 // section) but read out inside the diet section, where they are now ticked.
@@ -20,6 +20,12 @@ function cabinetLines(cabinet = {}, label) {
 
 export function sectionOrder(phase) {
   return ALWAYS_ON.concat(CONDITIONAL.filter((id) => SCHEMA[id].condition(phase)));
+}
+
+// What gets read out: the sections asked today, plus retired ones, which only
+// show when a day logged before they were retired has answers in them.
+export function readOrder(phase) {
+  return sectionOrder(phase).concat(RETIRED);
 }
 
 function detailVisible(field, value) {
@@ -109,7 +115,7 @@ export function summarizeEntry(entry) {
     advice: answers.advice?.text || "",
     doneCount: order.filter((id) => (entry.done || []).includes(id)).length,
     totalCount: order.length,
-    sections: order
+    sections: readOrder(meta.cyclePhase)
       .map((secId) => ({ secId, title: T(SCHEMA[secId].title), lines: sectionLines(secId, answers[secId], answers) }))
       .filter((s) => s.lines.length),
   };

@@ -12,16 +12,18 @@ import { getCycle, getRemoteDates, fetchDay } from "./sync.js";
 import { calendarCycleDays, periodCovering, activePeriods, daysBetween } from "./cycle.js";
 import { PERIOD_PHASE } from "./cycle-store.js";
 
-const EGG_WHITE = "蛋清狀透明拉絲||Egg-white";
+const EGG_WHITE = "蛋清狀透明拉絲||Egg-white";           // before 婦科觀察 (a multi)
+const EGG_WHITE_NOW = "蛋清狀透明拉絲||Egg-white, stretchy"; // 婦科觀察 (a single)
 
 function hasEggWhite(entry) {
   const a = entry?.answers || {};
+  if (a.cyclesigns?.dischargeTexture === EGG_WHITE_NOW) return true;
   return [a.regularday?.discharge, a.preperiod?.discharge].some((v) => Array.isArray(v) && v.includes(EGG_WHITE));
 }
 
 function loggedSpotting(entry) {
   const a = entry?.answers || {};
-  return [a.regularday?.spotting, a.preperiod?.spotting].includes("有||Yes");
+  return [a.cyclesigns?.spotting, a.regularday?.spotting, a.preperiod?.spotting].includes("有||Yes");
 }
 const WEEKDAYS = ["日||S", "一||M", "二||T", "三||W", "四||T", "五||F", "六||S"];
 

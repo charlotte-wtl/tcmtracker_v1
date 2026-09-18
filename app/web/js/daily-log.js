@@ -11,7 +11,7 @@ import {
 import { getEntry, putEntry } from "./db.js";
 import { queuePush, fetchDay, getCycle } from "./sync.js";
 import { todayStr, shiftDate, parseDateStr } from "./dates.js";
-import { sectionOrder, getActiveDetails, sectionLines } from "./summary.js";
+import { sectionOrder, readOrder, getActiveDetails, sectionLines } from "./summary.js";
 import { mergeEntries, sameEntryContent } from "./merge.js";
 import { cycleStatus, periodCovering, likelyPhase } from "./cycle.js";
 import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
@@ -172,7 +172,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
   function renderDetails(secId, field, value) {
     const active = getActiveDetails(field, value);
     if (!active) return "";
-    return active.map((d) => renderDetailGroup(secId, field, d)).join("");
+    return active.filter((d) => !d.retired).map((d) => renderDetailGroup(secId, field, d)).join("");
   }
   function renderPerItemSeverity(secId, field, value) {
     const selected = (Array.isArray(value) ? value : []).filter((v) => !NONE_MARKERS.includes(v));
@@ -188,6 +188,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     }).join("") + `</div>`;
   }
   function renderField(secId, field) {
+    if (field.retired) return "";
     const value = fieldValue(secId, field.id);
     let control;
     if (field.type === "scale") control = renderScale(secId, field, value);
@@ -728,7 +729,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
   /* ---------------- Summary ---------------- */
 
   function buildSummary(prevAdvice = null) {
-    const order = currentOrder();
+    const order = readOrder(state.answers.meta.cyclePhase);
     let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
     // The cycle day used to be typed by hand; it is computed now, so the
     // analysis still gets it.

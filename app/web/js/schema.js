@@ -185,52 +185,103 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
-  regularday: {
-    title: "9. 平日觀察||9. Regular day",
-    condition: p => p === "平日||Regular day",
+  // Asked every day except period days, so discharge and one-sided pain can
+  // be followed across the whole cycle (the 經間期 is read from these).
+  cyclesigns: {
+    title: "9. 婦科觀察||9. Cycle signs",
+    condition: p => p !== "經期||Period",
     fields: [
-      { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
-        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
+      { id:"dischargeTexture", type:"single", label:"分泌物質地||Discharge texture",
+        options:["乾燥或幾乎沒有||Dry / almost none","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white, stretchy","水樣||Watery"] },
+      { id:"dischargeColour", type:"single", label:"分泌物顏色||Discharge colour",
+        options:["透明||Clear","白色||White","淡黃||Pale yellow","黃色||Yellow","黃綠||Yellow-green"] },
+      { id:"dischargeAmount", type:"single", label:"分泌物量||Discharge amount",
+        options:["少||Little","正常||Normal","多||A lot"] },
+      { id:"dischargeOther", type:"multi", label:"異味或搔癢||Odour or itching",
+        options:["無明顯||None","有異味||Odour","外陰癢||Itching"] },
       { id:"spotting", type:"yesno", label:"點滴出血||Spotting", options:YESNO,
-        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] }
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] },
+      { id:"sidePain", type:"yesno", label:"單側下腹痛||One-sided lower belly pain", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"side", type:"single", label:"哪一側||Which side", options:["左||Left","右||Right"] },
+          { id:"quality", type:"single", label:"性質||Quality", options:["刺痛||Stabbing","悶痛||Dull","抽痛||Cramping"] }
+        ] },
+      { id:"breastTenderness", type:"yesno", label:"乳房脹痛||Breast tenderness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"multi", label:"程度／性質||Severity / quality", options:["輕||Mild","中||Moderate","重||Severe","乳頭敏感||Sensitive nipples"] }] }
     ]
   },
   preperiod: {
-    title: "9. 經前狀態||9. Pre-period",
+    title: "10. 經前狀態||10. Pre-period",
     condition: p => p === "經前||Pre-period",
     fields: [
-      { id:"breastTenderness", type:"yesno", label:"乳房脹痛||Breast tenderness", options:YESNO,
-        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"multi", label:"程度／性質||Severity / quality", options:["輕||Mild","中||Moderate","重||Severe","乳頭敏感||Sensitive nipples"] }] },
-      { id:"abdomenPain", type:"yesno", label:"下腹或腰部脹痛||Lower abdomen/back distension", options:YESNO,
-        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
+      { id:"bellyPain", type:"yesno", label:"小腹不適||Lower belly discomfort", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"nature", type:"multi", label:"感覺||Feels", options:["脹||Bloated","痠||Aching","冷||Cold"] },
+          { id:"sev", type:"single", label:"程度||Severity", options:SEV3 }
+        ] },
+      { id:"backPain", type:"yesno", label:"腰部不適||Lower back discomfort", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"nature", type:"multi", label:"感覺||Feels", options:["脹||Bloated","痠||Aching","冷||Cold"] },
+          { id:"sev", type:"single", label:"程度||Severity", options:SEV3 }
+        ] },
+      { id:"headache", type:"yesno", label:"頭痛||Headache", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"where", type:"multi", label:"部位||Where", options:["頭頂||Top of head","兩側||Sides","前額||Forehead","後腦||Back of head"] },
+          { id:"quality", type:"single", label:"性質||Quality", options:["脹痛||Distending","空痛伴頭暈||Empty ache with dizziness","刺痛||Stabbing"] }
+        ] },
       { id:"moodSwing", type:"single", label:"情緒波動型態||Mood swing pattern",
         options:["無明顯||None","易怒為主||Mainly irritable","易哭為主||Mainly tearful","兩者皆有||Both"] },
       { id:"edema", type:"single", label:"水腫||Fluid retention",
         options:["無||None","輕微||Mild","明顯||Noticeable"] },
       { id:"skinChange", type:"multi", label:"皮膚變化||Skin changes",
-        options:["無||None","長痘||Breakouts","出油增加||Oilier","泛紅刺激||Irritated","脫皮||Flaky"] },
-      { id:"discharge", type:"multi", label:"分泌物型態||Discharge type",
+        options:["無||None","長痘||Breakouts","出油增加||Oilier","泛紅刺激||Irritated","脫皮||Flaky"],
+        detailsTrigger:"長痘||Breakouts", details:[
+          { id:"where", type:"multi", label:"長痘部位||Where", options:["下巴||Jaw / chin","口周||Around the mouth","額頭||Forehead","臉頰||Cheeks"] },
+          { id:"kind", type:"single", label:"痘的樣子||What they look like", options:["紅腫有膿頭||Red, with pus heads","暗沉無頭||Dull, no head"] }
+        ] },
+      { id:"notes", type:"text", multiline:true, label:"睡眠或食慾變化／其他||Sleep or appetite changes / other" },
+      // Retired — kept so days logged before the split still read out.
+      { id:"abdomenPain", retired:true, type:"yesno", label:"下腹或腰部脹痛||Lower abdomen/back distension", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
+      { id:"breastTenderness", retired:true, type:"yesno", label:"乳房脹痛||Breast tenderness", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"sev", type:"multi", label:"程度／性質||Severity / quality", options:["輕||Mild","中||Moderate","重||Severe","乳頭敏感||Sensitive nipples"] }] },
+      { id:"discharge", retired:true, type:"multi", label:"分泌物型態||Discharge type",
         options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
-      { id:"spotting", type:"yesno", label:"點滴出血||Spotting", options:YESNO,
-        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] },
-      { id:"notes", type:"text", multiline:true, label:"睡眠或食慾變化／其他||Sleep or appetite changes / other" }
+      { id:"spotting", retired:true, type:"yesno", label:"點滴出血||Spotting", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] }
     ]
   },
   period: {
-    title: "10. 經期狀態||10. Period",
+    title: "9. 經期狀態||9. Period",
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
         options:["很少||Very light","正常||Normal","偏多||Heavy","大量||Very heavy"] },
+      { id:"padChanges", type:"single", label:"今天更換衛生用品次數||Pads / cups changed today",
+        options:["1–2次||1–2","3–4次||3–4","5–6次||5–6","7次以上||7+"] },
+      { id:"soaked", type:"single", label:"是否浸透||Soaked through",
+        options:["沒有||No","接近浸透||Nearly","浸透或外漏||Soaked or leaked"] },
       { id:"colour", type:"single", label:"經色||Colour",
-        options:["淡紅||Pale red","正紅||Bright red","暗紅||Dark red","紫黑帶血塊||Purplish-black with clots"] },
+        options:["淡紅||Pale red","正紅||Bright red","鮮紅||Vivid red","深紅||Deep red","暗紅||Dark red","紫黑帶血塊||Purplish-black with clots","褐色||Brown"] },
       { id:"clots", type:"single", label:"血塊||Clots",
-        options:["無||None","少量細小||Small/few","大血塊||Large"] },
+        options:["無||None","少量細小||Small/few","大血塊||Large"],
+        detailsTrigger:"any", excludeValues:["無||None"], details:[
+          { id:"relief", type:"single", label:"血塊排出後腹痛||Pain after passing a clot", options:["減輕||Eases","沒變||No change","本來就不痛||No pain to begin with"] }
+        ] },
       { id:"texture", type:"single", label:"經質||Texture",
         options:["清稀||Thin","正常||Normal","黏稠||Thick"] },
       { id:"painType", type:"multi", label:"經期腹痛||Pain type",
         options:["冷痛喜按喜溫||Cold, relieved by warmth","脹痛||Distending","刺痛拒按||Stabbing","墜痛||Bearing-down"],
-        detailsTrigger:"any", details:[{ id:"sev", type:"single", label:"程度||Severity", options:["輕度||Mild","中度||Moderate","強烈||Severe","無法忍受||Unbearable"] }] },
+        detailsTrigger:"any", details:[
+          { id:"score", type:"single", label:"最痛時幾分（0–10）||Worst pain today (0–10)", options:["0","1","2","3","4","5","6","7","8","9","10"] },
+          { id:"onset", type:"single", label:"這次從何時開始痛||When this period's pain started", options:["經前就開始||Before the period","經期頭1–2天||First 1–2 days","經期後段或經後||Late in or after the period"] },
+          { id:"sev", retired:true, type:"single", label:"程度||Severity", options:["輕度||Mild","中度||Moderate","強烈||Severe","無法忍受||Unbearable"] }
+        ] },
+      { id:"painkiller", type:"single", label:"止痛藥||Painkillers today",
+        options:["沒吃||None","1次||Once","2次||Twice","3次以上||3+ times"],
+        detailsTrigger:"any", excludeValues:["沒吃||None"], details:[
+          { id:"name", type:"text", label:"哪一種||Which one" }
+        ] },
       { id:"backache", type:"yesno", label:"腰痠||Back soreness", options:YESNO,
         detailsTrigger:"有||Yes", details:[{ id:"sev", type:"single", label:"程度||Severity", options:SEV3 }] },
       { id:"symptoms", type:"multi", label:"伴隨症狀||Accompanying symptoms",
@@ -239,17 +290,31 @@ export const SCHEMA = {
     ]
   },
   postperiod: {
-    title: "11. 經後狀態||11. Post-period",
+    title: "10. 經後狀態||10. Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
-      { id:"recoverySpeed", type:"single", label:"精力恢復速度||Energy recovery speed",
-        options:["1–2天內||Within 1–2 days","3天以上||3+ days","持續疲憊未恢復||Ongoing fatigue"] },
       { id:"lingering", type:"multi", label:"是否有延續的不適||Lingering discomfort",
-        options:["無||None","腰痠||Back soreness","頭暈||Dizziness","情緒低落||Low mood","持續||Ongoing"] },
-      { id:"dischargeRecovery", type:"single", label:"分泌物恢復情況||Discharge recovery",
+        options:["無||None","腰痠||Back soreness","小腹隱痛（按著舒服）||Dull belly ache (better with pressure)","頭暈||Dizziness","情緒低落||Low mood","持續||Ongoing"] },
+      // Retired — now read from the daily energy, mood and cycle-signs answers.
+      { id:"recoverySpeed", retired:true, type:"single", label:"精力恢復速度||Energy recovery speed",
+        options:["1–2天內||Within 1–2 days","3天以上||3+ days","持續疲憊未恢復||Ongoing fatigue"] },
+      { id:"dischargeRecovery", retired:true, type:"single", label:"分泌物恢復情況||Discharge recovery",
         options:["恢復正常||Normal","偏乾||Drier","偏黏稠||Thicker"] },
-      { id:"moodStability", type:"single", label:"整體情緒穩定度||Overall mood stability",
+      { id:"moodStability", retired:true, type:"single", label:"整體情緒穩定度||Overall mood stability",
         options:["穩定||Stable","仍有波動||Still fluctuating"] }
+    ]
+  },
+  // Retired section: its questions moved into 婦科觀察. Kept so earlier days
+  // still read out in the calendar and analysis.
+  regularday: {
+    title: "平日觀察||Regular day",
+    retired: true,
+    condition: p => p === "平日||Regular day",
+    fields: [
+      { id:"discharge", retired:true, type:"multi", label:"分泌物型態||Discharge type",
+        options:["乾燥||Dry","黏稠||Sticky","乳霜狀||Creamy","蛋清狀透明拉絲||Egg-white","黃色分泌物||Yellow discharge"] },
+      { id:"spotting", retired:true, type:"yesno", label:"點滴出血||Spotting", options:YESNO,
+        detailsTrigger:"有||Yes", details:[{ id:"colour", type:"single", label:"顏色||Colour", options:["淡紅||Pale red","褐色||Brown","鮮紅||Bright red"] }] }
     ]
   }
 };
@@ -259,7 +324,9 @@ export const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期
 export const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
 
 export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet"];
-export const CONDITIONAL = ["regularday","preperiod","period","postperiod"];
+export const CONDITIONAL = ["cyclesigns","preperiod","period","postperiod"];
+// Sections no longer asked, read out only when an old day has answers in them.
+export const RETIRED = ["regularday"];
 
 export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 
@@ -267,5 +334,5 @@ export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 export const SECTION_COLORS = {
   sleep:"mauve", morning:"ochre", tongue:"clay", general:"slate",
   organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose",
-  regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
+  cyclesigns:"mauve", regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
 };
