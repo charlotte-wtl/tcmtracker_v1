@@ -13,7 +13,7 @@ import { queuePush, fetchDay, getCycle } from "./sync.js";
 import { todayStr, shiftDate, parseDateStr } from "./dates.js";
 import { sectionOrder, getActiveDetails, sectionLines } from "./summary.js";
 import { mergeEntries, sameEntryContent } from "./merge.js";
-import { cycleStatus, periodCovering } from "./cycle.js";
+import { cycleStatus, periodCovering, likelyPhase } from "./cycle.js";
 import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
 import { listItems, addItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { openSheet, choose } from "./ui.js";
@@ -472,6 +472,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     if (!btn) return;
     const cur = state.answers.meta.cyclePhase;
     state.answers.meta.cyclePhase = cur === btn.dataset.value ? "" : btn.dataset.value;
+    delete state.answers.meta.phaseAuto; // your choice now, not a guess
     markDirty();
     renderApp();
     scheduleAutoSave();
@@ -667,9 +668,10 @@ export function mountDailyLog(root, { onSaveStatus }) {
   $("#backToTodayBtn").addEventListener("click", () => { loadDate(todayStr()); window.scrollTo(0, 0); });
 
   $("#resetBtn").addEventListener("click", () => {
-    const phase = state.answers.meta.cyclePhase;
+    const { cyclePhase, phaseAuto } = state.answers.meta;
     state.answers = blankAnswers();
-    state.answers.meta.cyclePhase = phase;
+    state.answers.meta.cyclePhase = cyclePhase;
+    if (phaseAuto) state.answers.meta.phaseAuto = true;
     state.done = new Set();
     settleExpanded();
     markDirty();
@@ -762,14 +764,33 @@ export function mountDailyLog(root, { onSaveStatus }) {
     state.expanded = next ? new Set([next]) : new Set();
   }
 
-  // Two-way link: a day inside a recorded period shows 經期 selected. It is a
-  // suggestion, saved only if the day is edited, and never replaces a phase
-  // you picked yourself.
+  // The day's phase is pre-picked from your period records (see likelyPhase).
+  // A pre-picked phase carries meta.phaseAuto, even once saved, so it keeps
+  // following the records — e.g. a period marked on the phone reaching the
+  // laptop turns its 平日 into 經期. One you tap yourself drops the marker and
+  // is never replaced.
+  const PHASE_OPTIONS = {
+    regular: CYCLE_FIELD.options[0], pre: CYCLE_FIELD.options[1],
+    period: CYCLE_FIELD.options[2], post: CYCLE_FIELD.options[3],
+  };
+
   function suggestPhase() {
-    if (state.answers.meta.cyclePhase) return false;
-    if (!periodCovering(state.periods, state.date)) return false;
-    state.answers.meta.cyclePhase = PERIOD_PHASE;
+    const meta = state.answers.meta;
+    if (meta.cyclePhase && !meta.phaseAuto) return false;
+    const phase = likelyPhase(state.periods, state.date);
+    const value = phase ? PHASE_OPTIONS[phase] : "";
+    if (value === (meta.cyclePhase || "")) return false;
+    if (value) { meta.cyclePhase = value; meta.phaseAuto = true; }
+    else { delete meta.cyclePhase; delete meta.phaseAuto; }
     return true;
+  }
+
+  // A pre-picked phase already saved into the day is corrected in storage too,
+  // not just on screen, so the calendar and other devices agree.
+  function persistPhaseCorrection() {
+    if (!state.snapshot?.answers?.meta?.phaseAuto) return;
+    markDirty();
+    scheduleAutoSave();
   }
 
   // Shows a stored day. keepLayout leaves open sections as they are (used when
@@ -778,10 +799,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
     state.answers = withAllSections(data ? clone(data.answers || {}) : null);
     state.done = new Set(data?.done || []);
     state.snapshot = { answers: clone(state.answers), done: Array.from(state.done) };
-    suggestPhase();
+    const corrected = suggestPhase();
     if (!keepLayout) settleExpanded();
     state.dirty = false;
     renderApp();
+    if (corrected) persistPhaseCorrection();
   }
 
   async function loadDate(dateStr) {
@@ -941,8 +963,9 @@ export function mountDailyLog(root, { onSaveStatus }) {
       state.cabinet = await listItems();
       // The day usually opens before sync has brought the period in (you
       // connect after the log is already on screen), so check again now.
-      suggestPhase();
+      const corrected = suggestPhase();
       renderApp();
+      if (corrected) persistPhaseCorrection();
     }
     if (!dates.includes(state.date)) return;
     // Unsaved edits on screen: the next save merges the new version in.

@@ -116,6 +116,35 @@ export function cycleStatus(periods, today) {
   return status;
 }
 
+// Days of 經前 before a period starts, and of 經後 after one ends.
+export const PHASE_WINDOW = 7;
+
+// The phase a day most likely is, from the periods on record:
+//   "period"  inside a recorded period;
+//   "post"    within PHASE_WINDOW days after one ends;
+//   "pre"     within PHASE_WINDOW days before the next start — the actual one
+//             for a past day, the predicted one otherwise — and on until the
+//             period starts if it is late;
+//   "regular" any other day.
+// null when there is nothing to go on. Recorded periods beat predictions,
+// so 經後 wins where a short cycle makes the two windows meet.
+export function likelyPhase(periods, date) {
+  const list = activePeriods(periods);
+  if (!list.length) return null;
+  if (periodCovering(list, date)) return "period";
+  const before = list.filter((p) => p.start <= date);
+  const last = before[before.length - 1];
+  if (last) {
+    const sinceEnd = daysBetween(periodEnd(last, list), date);
+    if (sinceEnd >= 1 && sinceEnd <= PHASE_WINDOW) return "post";
+  }
+  const next = list.find((p) => p.start > date);
+  if (next) return daysBetween(date, next.start) <= PHASE_WINDOW ? "pre" : "regular";
+  const status = cycleStatus(list, date);
+  if (status.nextPeriod && status.daysUntilPeriod <= PHASE_WINDOW) return "pre";
+  return "regular";
+}
+
 // After-the-fact ovulation estimates for every finished cycle.
 export function pastOvulationEstimates(periods) {
   return cycleLengths(periods).map((c) => addDays(c.to, -LUTEAL));
