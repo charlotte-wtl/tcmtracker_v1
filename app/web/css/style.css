@@ -399,4 +399,9 @@ body.connect-open { overflow: hidden; }
 .cab-group .q { font-size: 0.78rem; color: var(--ink-soft); font-weight: 600; margin-bottom: 6px; }
 .cab-tag { font-size: 0.66rem; opacity: .7; margin-left: 4px; }
 .cabinet-list .period-dates { font-variant-numeric: normal; }
+
+/* Cabinet teas offered under the beverage field as you type. */
+.suggest:not(:empty) { margin-top: 6px; }
+.suggest .opt { font-size: 0.78rem; padding: 5px 10px; }
+.opt.ghost { border-style: dashed; color: var(--ink-soft); }
 .modal .opts { margin-bottom: 4px; }

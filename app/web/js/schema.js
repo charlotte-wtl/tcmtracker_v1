@@ -171,7 +171,9 @@ export const SCHEMA = {
     title: "8. 飲食||8. Diet",
     fields: [
       { id:"morning", type:"text", label:"早餐||Morning" },
-      { id:"beverage", type:"text", label:"飲品||Beverage" },
+      // Teas you own are offered here as you type: a drink belongs in the diet
+      // section, not in the cabinet's tick list.
+      { id:"beverage", type:"text", label:"飲品||Beverage", suggest:"tea" },
       { id:"lunch", type:"text", label:"午餐||Lunch" },
       { id:"snack", type:"text", label:"點心||Snack" },
       { id:"dinner", type:"text", label:"晚餐||Dinner" },
