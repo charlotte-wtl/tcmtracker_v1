@@ -209,7 +209,11 @@ export function mountCalendar(root, { onEditDay }) {
         </div>
         <button type="button" class="btn accent" data-edit="${dateStr}">${T("編輯這一天||Edit this day")}</button>
       </div>
-      ${sections || `<p class="pv-meta">${T("只記錄了心情或週期狀態。||Only mood or cycle phase was recorded.")}</p>`}
+      ${sections || (s.advice ? "" : `<p class="pv-meta">${T("只記錄了心情或週期狀態。||Only mood or cycle phase was recorded.")}</p>`)}
+      ${s.advice ? `<section class="pv-sec pv-advice">
+        <h3>${T("分析建議||Analysis advice")}</h3>
+        <p class="pv-advice-text">${esc(s.advice)}</p>
+      </section>` : ""}
     </div>`;
   }
 

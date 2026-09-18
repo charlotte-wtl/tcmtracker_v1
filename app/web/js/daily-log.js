@@ -93,6 +93,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
       <button class="btn" id="laterBtn"></button>
       <button class="btn accent" id="analyzeBtn"></button>
     </div>
+    <div class="mood-card advice-card">
+      <p class="mood-prompt" id="adviceTitle"></p>
+      <p class="mood-hint" id="adviceHint"></p>
+      <textarea id="adviceText"></textarea>
+    </div>
   `;
 
   const $ = (sel) => root.querySelector(sel);
@@ -392,6 +397,35 @@ export function mountDailyLog(root, { onSaveStatus }) {
     scheduleAutoSave();
   }
 
+  /* ---------------- Analysis advice ---------------- */
+
+  // The TCM chat's reply to this day's analysis, pasted back in. Stored with
+  // the day (answers.advice), shown in the calendar preview, and handed to the
+  // next day's analysis so the chat can follow up on what it suggested.
+  function renderAdvice() {
+    $("#adviceTitle").textContent = T("分析建議||Analysis advice");
+    $("#adviceHint").textContent = T("執行分析後，把中醫對話的回覆貼在這裡。明天的分析會附上它，好讓對話接續追蹤。||After running the analysis, paste the TCM chat's reply here. Tomorrow's analysis includes it, so the chat can follow up.");
+    const ta = $("#adviceText");
+    ta.placeholder = T("貼上分析結果…||Paste the analysis here…");
+    const text = state.answers.advice?.text || "";
+    if (document.activeElement !== ta) ta.value = text;
+    fitAdvice();
+  }
+
+  // Grows with the pasted reply, so a long answer reads without inner scrolling.
+  function fitAdvice() {
+    const ta = $("#adviceText");
+    ta.style.height = "auto";
+    ta.style.height = Math.max(96, ta.scrollHeight + 2) + "px";
+  }
+
+  async function previousAdvice(date) {
+    const prev = shiftDate(date, -1);
+    const entry = (await getEntry(prev).catch(() => null)) || (await fetchDay(prev).catch(() => null));
+    const text = entry?.answers?.advice?.text;
+    return text ? { date: prev, text } : null;
+  }
+
   function renderCycleField() {
     const value = state.answers.meta.cyclePhase;
     const html = `<div class="mood-card cycle-field"><label class="q" style="display:block;margin-bottom:8px;">${T(CYCLE_FIELD.label)}</label>` +
@@ -448,6 +482,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     $("#backToTodayBtn").textContent = T("回到今天||Back to today");
     $("#laterBtn").textContent = T("稍後再分析||Save, analyze later");
     $("#analyzeBtn").textContent = T("執行分析||Run analysis");
+    renderAdvice();
 
     renderCycleField();
     renderMood();
@@ -664,12 +699,23 @@ export function mountDailyLog(root, { onSaveStatus }) {
     scheduleAutoSave();
   });
 
+  $("#adviceText").addEventListener("input", (e) => {
+    const text = e.target.value;
+    if (text.trim()) state.answers.advice = { text, savedAt: Date.now() };
+    else delete state.answers.advice;
+    fitAdvice();
+    markDirty();
+    scheduleAutoSave();
+  });
+
   $("#dateInput").addEventListener("change", (e) => { if (e.target.value) loadDate(e.target.value); });
   $("#backToTodayBtn").addEventListener("click", () => { loadDate(todayStr()); window.scrollTo(0, 0); });
 
   $("#resetBtn").addEventListener("click", () => {
     const { cyclePhase, phaseAuto } = state.answers.meta;
+    const advice = state.answers.advice;
     state.answers = blankAnswers();
+    if (advice) state.answers.advice = advice;
     state.answers.meta.cyclePhase = cyclePhase;
     if (phaseAuto) state.answers.meta.phaseAuto = true;
     state.done = new Set();
@@ -681,7 +727,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
   /* ---------------- Summary ---------------- */
 
-  function buildSummary() {
+  function buildSummary(prevAdvice = null) {
     const order = currentOrder();
     let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
     // The cycle day used to be typed by hand; it is computed now, so the
@@ -699,6 +745,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
         out += T(SCHEMA[secId].title) + "\n" + lines.map((l) => l.label + "：" + l.text).join("\n") + "\n\n";
       }
     });
+    // What the chat suggested yesterday, so it can follow up rather than start over.
+    if (prevAdvice) {
+      const [, m, d] = prevAdvice.date.split("-").map(Number);
+      out += T("昨天的分析建議||Yesterday's analysis advice") + `（${m}/${d}）\n` + prevAdvice.text.trim() + "\n\n";
+    }
     // What's in the cabinet, so the analysis can suggest from what you have.
     if (state.cabinet.length) {
       out += T("藥櫃（手邊有的）||Cabinet (what I have)") + "\n";
@@ -912,8 +963,11 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
   $("#laterBtn").addEventListener("click", () => { saveCurrent(); });
 
-  $("#analyzeBtn").addEventListener("click", () => {
-    const summary = buildSummary();
+  $("#analyzeBtn").addEventListener("click", async () => {
+    const date = state.date;
+    const prev = await previousAdvice(date);
+    if (state.date !== date) return; // switched days while looking it up
+    const summary = buildSummary(prev);
     saveCurrent({ completedAt: new Date().toISOString() });
     showSummaryModal(summary);
   });
@@ -924,6 +978,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     backdrop.innerHTML = `<div class="modal">
       <h2>${T("今日摘要 — 複製後貼到你的中醫回饋對話||Today's summary — copy this into your TCM feedback chat")}</h2>
       <textarea readonly id="summaryText"></textarea>
+      <p class="settings-hint">${T("拿到回覆後，貼到日誌最下方的「分析建議」。||When the reply comes back, paste it into Analysis advice at the bottom of the log.")}</p>
       <div class="btnrow">
         <button class="btn accent" id="copySummaryBtn">${T("複製||Copy")}</button>
         <button class="btn ghost" id="closeSummaryBtn">${T("關閉||Close")}</button>

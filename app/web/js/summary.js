@@ -106,6 +106,7 @@ export function summarizeEntry(entry) {
   return {
     mood: meta.moodRating ? T(MOOD_WORDS[meta.moodRating - 1]) : "",
     phase: meta.cyclePhase ? T(meta.cyclePhase) : "",
+    advice: answers.advice?.text || "",
     doneCount: order.filter((id) => (entry.done || []).includes(id)).length,
     totalCount: order.length,
     sections: order

@@ -310,6 +310,10 @@ input[type="number"] { font-variant-numeric: tabular-nums; }
 .pv-sec dl { margin: 0; }
 .pv-line { display: grid; grid-template-columns: minmax(0, 38%) 1fr; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 0.82rem; line-height: 1.5; }
 .pv-line:last-child { border-bottom: none; }
+.pv-advice-text { white-space: pre-wrap; font-size: 0.82rem; line-height: 1.6; margin: 0; }
+
+/* The chat's reply, pasted back under Run analysis. */
+.advice-card textarea { width: 100%; font-size: 0.82rem; line-height: 1.6; overflow: hidden; resize: none; }
 .pv-line dt { color: var(--ink-soft); }
 .pv-line dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 460px) { .pv-line { grid-template-columns: 1fr; gap: 2px; } }
