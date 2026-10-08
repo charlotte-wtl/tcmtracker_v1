@@ -193,12 +193,12 @@ export const SCHEMA = {
     title: "9. 皮膚||9. Skin",
     fields: [
       { id:"dryness", type:"slider", label:"皮膚乾燥程度||Skin dryness", min:0, max:5, minLabel:"不乾||Not dry", maxLabel:"非常乾||Very dry" },
-      { id:"peeling", type:"yesno", label:"脫皮||Peeling", options:YESNO,
+      { id:"peeling", type:"yesno", label:"脫皮||Peeling", options:YESNO, allowOther:false,
         detailsTrigger:"有||Yes", details:[
           { id:"location", type:"multi", label:"位置||Where", options:SKIN_AREAS },
           { id:"otherLocation", type:"text", label:"其他位置||Other location" }
         ] },
-      { id:"breakouts", type:"yesno", label:"長痘||Breakouts", options:YESNO,
+      { id:"breakouts", type:"yesno", label:"長痘||Breakouts", options:YESNO, allowOther:false,
         detailsTrigger:"有||Yes", details:[
           { id:"location", type:"multi", label:"位置||Where", options:SKIN_AREAS },
           { id:"otherLocation", type:"text", label:"其他位置||Other location" }
