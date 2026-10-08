@@ -4,6 +4,7 @@
 
 export const YESNO = ["有||Yes", "無||No"];
 export const SEV3 = ["輕||Mild", "中||Moderate", "重||Severe"];
+export const SKIN_AREAS = ["額頭||Forehead","眉間||Between brows","鼻||Nose","左臉頰||Left cheek","右臉頰||Right cheek","嘴周||Around mouth","下巴||Chin","下顎線||Jawline","頸||Neck","胸口||Chest","背||Back","手||Hands"];
 export const SEV4 = ["輕度||Mild", "中度||Moderate", "明顯||Noticeable", "超級腫||Very heavy"];
 
 export const SCHEMA = {
@@ -185,10 +186,32 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
+  // Skin, asked daily. Where a breakout sits matters to the reading (cheeks
+  // left/right, forehead, chin map to different organs), so locations are
+  // kept apart rather than lumped as "face".
+  skin: {
+    title: "9. 皮膚||9. Skin",
+    fields: [
+      { id:"dryness", type:"slider", label:"皮膚乾燥程度||Skin dryness", min:0, max:5, minLabel:"不乾||Not dry", maxLabel:"非常乾||Very dry" },
+      { id:"peeling", type:"yesno", label:"脫皮||Peeling", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"location", type:"multi", label:"位置||Where", options:SKIN_AREAS },
+          { id:"otherLocation", type:"text", label:"其他位置||Other location" }
+        ] },
+      { id:"breakouts", type:"yesno", label:"長痘||Breakouts", options:YESNO,
+        detailsTrigger:"有||Yes", details:[
+          { id:"location", type:"multi", label:"位置||Where", options:SKIN_AREAS },
+          { id:"otherLocation", type:"text", label:"其他位置||Other location" }
+        ] },
+      // Picked from the cabinet's skincare the way teas are under 飲品.
+      { id:"skincare", type:"text", label:"護膚品||Skincare", suggest:"skincare" },
+      { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
+    ]
+  },
   // Asked every day except period days, so discharge and one-sided pain can
   // be followed across the whole cycle (the 經間期 is read from these).
   cyclesigns: {
-    title: "9. 婦科觀察||9. Cycle signs",
+    title: "10. 婦科觀察||10. Cycle signs",
     condition: p => p !== "經期||Period",
     fields: [
       { id:"dischargeTexture", type:"single", label:"分泌物質地||Discharge texture",
@@ -211,7 +234,7 @@ export const SCHEMA = {
     ]
   },
   preperiod: {
-    title: "10. 經前狀態||10. Pre-period",
+    title: "11. 經前狀態||11. Pre-period",
     condition: p => p === "經前||Pre-period",
     fields: [
       { id:"bellyPain", type:"yesno", label:"小腹不適||Lower belly discomfort", options:YESNO,
@@ -252,7 +275,7 @@ export const SCHEMA = {
     ]
   },
   period: {
-    title: "9. 經期狀態||9. Period",
+    title: "10. 經期狀態||10. Period",
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
@@ -290,7 +313,7 @@ export const SCHEMA = {
     ]
   },
   postperiod: {
-    title: "10. 經後狀態||10. Post-period",
+    title: "11. 經後狀態||11. Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
       { id:"lingering", type:"multi", label:"是否有延續的不適||Lingering discomfort",
@@ -323,7 +346,7 @@ export const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期
   options:["平日||Regular day","經前||Pre-period","經期||Period","經後||Post-period"] };
 export const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
 
-export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet"];
+export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet","skin"];
 export const CONDITIONAL = ["cyclesigns","preperiod","period","postperiod"];
 // Sections no longer asked, read out only when an old day has answers in them.
 export const RETIRED = ["regularday"];
@@ -333,6 +356,6 @@ export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 // Japandi-muted per-section accent tokens — used sparingly (a thin top rule, never a block fill).
 export const SECTION_COLORS = {
   sleep:"mauve", morning:"ochre", tongue:"clay", general:"slate",
-  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose",
+  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose", skin:"ochre",
   cyclesigns:"mauve", regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
 };

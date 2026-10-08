@@ -2,12 +2,13 @@
 // Managed in Profile, ticked off in the daily log, and listed in the analysis
 // summary so the TCM chat can suggest something you already own.
 
-import { getCabinet, saveCabinet } from "./sync.js";
+import { getCabinet, saveCabinet, getUserId } from "./sync.js";
 
 export const KINDS = {
   tea: "茶飲||Tea",
   supplement: "保健品||Supplement",
   herb: "中藥||Chinese herb",
+  skincare: "護膚品||Skincare",
   other: "其他||Other",
 };
 
@@ -25,8 +26,33 @@ export function activeItems(cabinet) {
     .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : (a.kind < b.kind ? -1 : 1)));
 }
 
+// Charlotte's skincare shelf, put in once so the 9. 皮膚 search has
+// something to offer from day one. Fixed ids keep two devices seeding at the
+// same time from doubling up, and updatedAt 1 loses to any real edit, so an
+// item removed on one device is never brought back by another's seed.
+const STARTER_OWNER = "TL6-668";
+const STARTER_SKINCARE = [
+  ["skin-hyaluronic", "Hyaluronic acid", "daily"],
+  ["skin-mask", "Mask", "as-needed"],
+  ["skin-azelaic", "Azelaic acid", "daily"],
+  ["skin-vitc", "Vitamin C", "daily"],
+  ["skin-tretinoin", "Tretinoin", "daily"],
+  ["skin-physical-exfoliant", "Physical exfoliant", "as-needed"],
+  ["skin-aha-bha", "AHA + BHA mask", "as-needed"],
+  ["skin-peptides", "Multi-peptide + copper peptide", "daily"],
+];
+
+async function seedStarterSkincare(cabinet) {
+  if ((await getUserId()) !== STARTER_OWNER) return cabinet;
+  const items = cabinet.items || [];
+  const missing = STARTER_SKINCARE.filter(([id]) => !items.some((i) => i.id === id));
+  if (!missing.length) return cabinet;
+  const added = missing.map(([id, name, schedule]) => ({ id, name, kind: "skincare", schedule, ingredients: "", updatedAt: 1 }));
+  return saveCabinet({ items: [...items, ...added] });
+}
+
 export async function listItems() {
-  return activeItems(await getCabinet());
+  return activeItems(await seedStarterSkincare(await getCabinet()));
 }
 
 export async function addItem({ name, kind = "other", schedule = "daily", ingredients = "" }) {
