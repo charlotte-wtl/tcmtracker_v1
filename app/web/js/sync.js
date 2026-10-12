@@ -14,7 +14,7 @@
 import {
   getMeta, setMeta, deleteMeta, getEntry, putEntry, deleteEntry, getAllEntries, clearEntries,
 } from "./db.js";
-import { mergeEntries, mergeCycle, mergeCabinet, sameEntryContent } from "./merge.js";
+import { mergeEntries, mergeCycle, mergeCabinet, mergeLayout, sameEntryContent } from "./merge.js";
 import { todayStr, shiftDate } from "./dates.js";
 
 const PERSISTED_KEYS = ["gh_owner", "gh_repo", "gh_branch", "gh_path_prefix"];
@@ -28,6 +28,7 @@ const TOKEN_SESSION_KEY = "tcm_gh_token";
 const RECENT_DAYS = 14;
 const CYCLE_FILE = "cycle.json";
 const CABINET_FILE = "cabinet.json";
+const LAYOUT_FILE = "layout.json";
 const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.json$/;
 
 /* ---------------- Status + change events ---------------- */
@@ -361,13 +362,14 @@ export async function fetchDay(date) {
   }
 }
 
-/* ---------------- Whole-file documents (cycle.json, cabinet.json) ----------------
+/* ---------------- Whole-file documents (cycle.json, cabinet.json, layout.json) ----------------
    Unlike days, these are single small files each device edits in place, so
    they follow the same sha-checked write + merge path as a day. */
 
 const DOCS = {
   cycle: { file: CYCLE_FILE, metaKey: "cycle", empty: { periods: [], spotting: [] }, merge: mergeCycle, fields: ["periods", "spotting"] },
   cabinet: { file: CABINET_FILE, metaKey: "cabinet", empty: { items: [] }, merge: mergeCabinet, fields: ["items"] },
+  layout: { file: LAYOUT_FILE, metaKey: "layout", empty: { layout: null }, merge: mergeLayout, fields: ["layout"] },
 };
 
 async function getDoc(kind) {
@@ -391,6 +393,8 @@ export const getCycle = () => getDoc("cycle");
 export const saveCycle = (data) => saveDoc("cycle", data);
 export const getCabinet = () => getDoc("cabinet");
 export const saveCabinet = (data) => saveDoc("cabinet", data);
+export const getLayoutDoc = () => getDoc("layout");
+export const saveLayoutDoc = (data) => saveDoc("layout", data);
 
 export function queueDocPush(kind) {
   return enqueue(kind, () => pushDoc(kind));
@@ -448,6 +452,55 @@ async function applyRemoteDoc(kind, sha, remote, userId) {
   }
   announce([], true);
   return true;
+}
+
+/* ---------------- Whole history, other repos ---------------- */
+
+// Brings down every day not yet on this device — the cycle insights read
+// across all cycles, while a normal pull only keeps the last two weeks.
+export async function downloadAllDays(onProgress = () => {}) {
+  if ((await configState()) !== "ready") return { ok: false, error: await configState() };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  let index = await loadIndex();
+  if (!index || index.userId !== userId) { await pullRecent(); index = await loadIndex(); }
+  if (!index || index.userId !== userId) return { ok: false, error: "no-index" };
+  const have = new Set((await getAllEntries()).map((e) => e.date));
+  const missing = Object.entries(index.files)
+    .map(([name, sha]) => [(DAY_FILE.exec(name) || [])[1], sha])
+    .filter(([date]) => date && !have.has(date));
+  const fetched = [];
+  try {
+    for (const [date, sha] of missing) {
+      await applyRemoteEntry(date, sha, await readBlob(cfg, sha), userId);
+      fetched.push(date);
+      onProgress(fetched.length, missing.length);
+    }
+  } catch (e) {
+    announce(fetched);
+    return { ok: false, error: networkError(e), count: fetched.length };
+  }
+  announce(fetched);
+  return { ok: true, count: fetched.length };
+}
+
+// A text file from any repo the token can read ("owner/repo", "path/file.md").
+export async function readRepoText(repoFull, path) {
+  const cfg = await getConfig();
+  if (!cfg.gh_token) return { ok: false, error: "needs-token" };
+  const cleanPath = String(path || "").replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repoFull}/contents/${cleanPath}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${cfg.gh_token}`, Accept: "application/vnd.github.raw+json" },
+    });
+    if (res.status === 404 || res.status === 403) return { ok: false, error: "no-access" };
+    if (res.status === 401) return { ok: false, error: "bad-token" };
+    if (!res.ok) return { ok: false, error: `github-${res.status}` };
+    return { ok: true, text: await res.text() };
+  } catch (e) {
+    return { ok: false, error: networkError(e) };
+  }
 }
 
 /* ---------------- Pull ---------------- */

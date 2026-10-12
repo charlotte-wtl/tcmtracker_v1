@@ -8,7 +8,11 @@ import { addPastPeriod, deletePeriod, importPeriods } from "./cycle-store.js";
 import { listItems, addItem, updateItem, deleteItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { scanHealthExport, periodsFromScan } from "./health-import.js";
 import { todayStr } from "./dates.js";
+import { getMeta } from "./db.js";
 import { esc, fullDate, choose, openSheet } from "./ui.js";
+import { getApiKey, setApiKey, getAiSettings, setAiSettings, loadSkill } from "./ai.js";
+import { openLayoutEditor } from "./layout-editor.js";
+import { hasCustomLayout, resetLayout } from "./layout.js";
 
 const SOURCES = {
   app: "App||App",
@@ -28,7 +32,9 @@ export function mountProfile(root, { onConnect }) {
   let importMessage = ""; // survives re-renders triggered by the import itself
 
   async function render() {
-    const [userId, state, cycle, cabinet] = await Promise.all([getUserId(), configState(), getCycle(), listItems()]);
+    const [userId, state, cycle, cabinet, ai, skillCache] = await Promise.all([
+      getUserId(), configState(), getCycle(), listItems(), getAiSettings(), getMeta("skill_cache")]);
+    const hasKey = !!getApiKey();
     const periods = activePeriods(cycle.periods).reverse();
     const shown = showAll ? periods : periods.slice(0, 8);
     const connected = state === "ready";
@@ -56,8 +62,44 @@ export function mountProfile(root, { onConnect }) {
       </section>
 
       <section class="card settings-form">
+        <h2 class="card-title">${T("App 內分析||In-app analysis")}</h2>
+        <p class="settings-hint">${T("用你自己的 Anthropic API key 和中醫 skill 在 App 內分析。key 只保存在這次瀏覽，不會寫入裝置；讓 Apple 密碼儲存它，下次一鍵填入。||Analyses in the app with your own Anthropic API key and TCM skill. The key is kept for this session only, never written to the device — let Apple Passwords save it to fill in next time.")}</p>
+        <form id="aiKeyForm" autocomplete="on">
+          <input type="text" name="username" autocomplete="username" value="Anthropic API" hidden readonly>
+          <label for="aiKey">${T("Anthropic API key||Anthropic API key")}</label>
+          <input type="password" id="aiKey" name="password" autocomplete="current-password" placeholder="${hasKey ? T("已輸入（這次瀏覽）||Entered for this session") : "sk-ant-…"}">
+          <div class="btnrow">
+            <button type="submit" class="btn">${T("儲存到這次瀏覽||Use for this session")}</button>
+            ${hasKey ? `<button type="button" class="btn ghost" data-act="ai-forget">${T("清除||Clear")}</button>` : ""}
+          </div>
+        </form>
+        <form id="aiSkillForm">
+          <label for="aiSkillRepo">${T("中醫 skill 倉庫||TCM skill repository")}</label>
+          <input type="text" id="aiSkillRepo" value="${esc(ai.skillRepo)}" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <label for="aiSkillPath">${T("skill 檔案||Skill file")}</label>
+          <input type="text" id="aiSkillPath" value="${esc(ai.skillPath)}" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <label for="aiProfilePath">${T("體質檔案（資料倉庫裡的路徑，可留空）||Constitution profile (path in your data repo, optional)")}</label>
+          <input type="text" id="aiProfilePath" value="${esc(ai.profilePath)}" placeholder="${esc("user-data/" + (userId || "ID") + "/profile.md")}" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <p class="settings-hint">${skillCache
+            ? T("已讀取 skill：||Skill loaded: ") + esc(skillCache.repo + "/" + skillCache.path) + "，" + new Date(skillCache.fetchedAt).toLocaleString()
+            : T("尚未讀取 skill。GitHub token 需要能讀取這個倉庫。||Skill not loaded yet. Your GitHub token needs read access to this repository.")}</p>
+          <div class="settings-status" id="aiSkillStatus" role="status"></div>
+          <div class="btnrow"><button type="submit" class="btn">${T("儲存並重新讀取 skill||Save and reload skill")}</button></div>
+        </form>
+      </section>
+
+      <section class="card settings-form">
+        <h2 class="card-title">${T("日誌順序||Daily log order")}</h2>
+        <p class="settings-hint">${T("調整段落、問題和選項的順序。會同步到你的其他裝置。||Change the order of sections, questions and options. Syncs to your other devices.")}</p>
+        <div class="btnrow">
+          <button type="button" class="btn" data-act="reorder">${T("調整順序||Reorder")}</button>
+          ${hasCustomLayout() ? `<button type="button" class="btn ghost" data-act="reorder-reset">${T("全部恢復預設||Reset everything")}</button>` : ""}
+        </div>
+      </section>
+
+      <section class="card settings-form">
         <h2 class="card-title">${T("藥櫃||Cabinet")}</h2>
-        <p class="settings-hint">${T("你手邊有的茶飲、保健品和護膚品。保健品在日誌「8. 飲食」的早餐前勾選，茶飲在飲品欄下方搜尋，護膚品在「9. 皮膚」搜尋；分析時會附上整個藥櫃，好從你已經有的東西給建議。||The teas, supplements and skincare you have. Supplements are ticked in 8. Diet, just before breakfast; teas are searched under the Beverage field, skincare under 9. Skin. The whole cabinet is attached to the analysis so suggestions come from what you already own.")}</p>
+        <p class="settings-hint">${T("你手邊有的茶飲、保健品和護膚品。保健品在日誌「飲食」的早餐前勾選，茶飲在飲品欄下方搜尋，護膚品在「皮膚」搜尋；分析時會附上整個藥櫃，好從你已經有的東西給建議。||The teas, supplements and skincare you have. Supplements are ticked in Diet, just before breakfast; teas are searched under the Beverage field, skincare under Skin. The whole cabinet is attached to the analysis so suggestions come from what you already own.")}</p>
         ${cabinet.length ? `<ul class="period-list cabinet-list">${cabinet.map((i) => `
           <li>
             <span class="period-dates">${esc(i.name)}</span>
@@ -141,6 +183,16 @@ export function mountProfile(root, { onConnect }) {
     const act = e.target.closest("[data-act]")?.dataset.act;
     if (!act) return;
     if (act === "cab-add") { openCabinetSheet(null); return; }
+    if (act === "ai-forget") { setApiKey(""); render(); return; }
+    if (act === "reorder") { openLayoutEditor(); return; }
+    if (act === "reorder-reset") {
+      const ok = await choose({
+        title: T("日誌順序全部恢復預設？||Reset the whole log order?"),
+        actions: [{ label: T("恢復預設||Reset"), kind: "accent", value: true }, { label: T("取消||Cancel"), kind: "ghost", value: false }],
+      });
+      if (ok) { await resetLayout(); render(); }
+      return;
+    }
     if (act === "connect") onConnect({ allowOffline: true });
     if (act === "switch") onConnect({ allowOffline: false });
     if (act === "pull") pullRecent();
@@ -159,6 +211,26 @@ export function mountProfile(root, { onConnect }) {
   });
 
   root.addEventListener("submit", async (e) => {
+    if (e.target.id === "aiKeyForm") {
+      e.preventDefault();
+      const key = root.querySelector("#aiKey").value.trim();
+      if (key) { setApiKey(key); render(); }
+      return;
+    }
+    if (e.target.id === "aiSkillForm") {
+      e.preventDefault();
+      const status = root.querySelector("#aiSkillStatus");
+      await setAiSettings({
+        skillRepo: root.querySelector("#aiSkillRepo").value.trim(),
+        skillPath: root.querySelector("#aiSkillPath").value.trim() || "SKILL.md",
+        profilePath: root.querySelector("#aiProfilePath").value.trim(),
+      });
+      const res = await loadSkill({ refresh: true });
+      if (res.ok && !res.refreshError) { render(); return; }
+      const why = { "needs-token": T("請先連線 GitHub。||Connect GitHub first."), "no-access": T("token 讀不到這個倉庫或檔案。||The token can't read this repo or file."), offline: T("目前離線。||You're offline.") };
+      setStatus(status, false, (res.ok ? T("沿用上次讀取的版本：||Kept the copy loaded earlier: ") : "") + (why[res.error || res.refreshError] || res.error || res.refreshError));
+      return;
+    }
     if (e.target.id !== "periodAddForm") return;
     e.preventDefault();
     const start = root.querySelector("#periodStart").value;
@@ -291,6 +363,7 @@ export function mountProfile(root, { onConnect }) {
   window.addEventListener("tcm:data-changed", (e) => { if (e.detail?.cycle && !pendingImport) render(); });
   window.addEventListener("tcm:connection-changed", render);
   window.addEventListener("tcm:lang-change", render);
+  window.addEventListener("tcm:layout-changed", () => { if (!root.hidden) render(); });
   render();
   return { refresh: render };
 }
