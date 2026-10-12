@@ -9,7 +9,7 @@ export const SEV4 = ["輕度||Mild", "中度||Moderate", "明顯||Noticeable", "
 
 export const SCHEMA = {
   sleep: {
-    title: "1. 睡眠||1. Sleep",
+    title: "睡眠||Sleep",
     fields: [
       { id:"onsetEase", type:"single", label:"入睡難易度||Sleep onset ease",
         options:["很快入睡（15分鐘內）||Fell asleep quickly (<15 min)","稍有困難（15–30分）||Somewhat difficult (15–30 min)","輾轉難眠（超過30分）||Tossed and turned (30+ min)","幾乎整夜難眠||Almost no sleep"] },
@@ -28,7 +28,7 @@ export const SCHEMA = {
     ]
   },
   morning: {
-    title: "2. 晨起徵象||2. Morning Signs",
+    title: "晨起徵象||Morning Signs",
     fields: [
       { id:"alertness", type:"single", label:"醒來精神||Waking alertness",
         options:["清爽有精神||Refreshed","尚可||OK","昏沉遲鈍||Groggy","極度疲憊像沒睡||Exhausted, as if didn't sleep"] },
@@ -60,7 +60,7 @@ export const SCHEMA = {
     ]
   },
   tongue: {
-    title: "3. 舌診||3. Tongue Diagnosis",
+    title: "舌診||Tongue Diagnosis",
     fields: [
       { id:"bodyColor", type:"single", label:"舌質顏色||Tongue body colour",
         options:["淡白||Pale white","淡紅（正常）||Pale red (normal)","紅||Red","絳紅（深紅）||Crimson","暗紅或紫暗||Dark red/purplish","淡紫／青紫||Pale/bluish purple"] },
@@ -78,7 +78,7 @@ export const SCHEMA = {
     ]
   },
   general: {
-    title: "4. 全身狀況問診||4. General / Systemic",
+    title: "全身狀況問診||General / Systemic",
     fields: [
       { id:"coldHeat", type:"single", label:"寒熱||Cold/Heat",
         options:["怕冷||Cold-averse","怕熱||Heat-averse","忽冷忽熱||Alternating","無明顯||None notable"] },
@@ -121,7 +121,7 @@ export const SCHEMA = {
     ]
   },
   organs: {
-    title: "5. 肝脾腎相關觀察與壓力||5. Liver / Spleen / Kidney + Stress",
+    title: "肝脾腎相關觀察與壓力||Liver / Spleen / Kidney + Stress",
     fields: [
       { id:"liverSigns", type:"multi", perItemSeverity:true, label:"肝相關徵象||Liver signs",
         options:["無明顯||None","脅肋脹痛||Rib-side pain","頭部兩側或頭頂痛||Temple/vertex headache","容易嘆氣||Frequent sighing","眼睛乾澀或視力模糊||Dry eyes/blurred vision","指甲易脆裂||Brittle nails"] },
@@ -135,7 +135,7 @@ export const SCHEMA = {
     ]
   },
   pulse: {
-    title: "6. 脈診||6. Pulse Diagnosis",
+    title: "脈診||Pulse Diagnosis",
     fields: [
       { id:"position", type:"single", label:"脈位||Pulse position",
         options:["浮||Floating","中取可得（正常）||Moderate (normal)","沉||Sunken"] },
@@ -152,7 +152,7 @@ export const SCHEMA = {
       ]
   },
   exercise: {
-    title: "7. 運動||7. Exercise",
+    title: "運動||Exercise",
     fields: [
       { id:"type", type:"single", label:"運動類型||Type",
         options:["無運動||None","有氧||Cardio","重量訓練||Strength","散步||Walking","瑜伽伸展||Yoga/stretch","混合||Mixed"] },
@@ -169,7 +169,7 @@ export const SCHEMA = {
     ]
   },
   diet: {
-    title: "8. 飲食||8. Diet",
+    title: "飲食||Diet",
     fields: [
       // Ticked from your cabinet, not from a fixed list of options: you take
       // these with a meal, so they belong here rather than in a section of
@@ -190,7 +190,7 @@ export const SCHEMA = {
   // left/right, forehead, chin map to different organs), so locations are
   // kept apart rather than lumped as "face".
   skin: {
-    title: "9. 皮膚||9. Skin",
+    title: "皮膚||Skin",
     fields: [
       { id:"dryness", type:"slider", label:"皮膚乾燥程度||Skin dryness", min:0, max:5, minLabel:"不乾||Not dry", maxLabel:"非常乾||Very dry" },
       { id:"peeling", type:"yesno", label:"脫皮||Peeling", options:YESNO, allowOther:false,
@@ -211,7 +211,7 @@ export const SCHEMA = {
   // Asked every day except period days, so discharge and one-sided pain can
   // be followed across the whole cycle (the 經間期 is read from these).
   cyclesigns: {
-    title: "10. 婦科觀察||10. Cycle signs",
+    title: "婦科觀察||Cycle signs",
     condition: p => p !== "經期||Period",
     fields: [
       { id:"dischargeTexture", type:"single", label:"分泌物質地||Discharge texture",
@@ -234,7 +234,7 @@ export const SCHEMA = {
     ]
   },
   preperiod: {
-    title: "11. 經前狀態||11. Pre-period",
+    title: "經前狀態||Pre-period",
     condition: p => p === "經前||Pre-period",
     fields: [
       { id:"bellyPain", type:"yesno", label:"小腹不適||Lower belly discomfort", options:YESNO,
@@ -275,7 +275,7 @@ export const SCHEMA = {
     ]
   },
   period: {
-    title: "10. 經期狀態||10. Period",
+    title: "經期狀態||Period",
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
@@ -313,7 +313,7 @@ export const SCHEMA = {
     ]
   },
   postperiod: {
-    title: "11. 經後狀態||11. Post-period",
+    title: "經後狀態||Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
       { id:"lingering", type:"multi", label:"是否有延續的不適||Lingering discomfort",

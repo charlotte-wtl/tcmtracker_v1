@@ -14,7 +14,7 @@
 import {
   getMeta, setMeta, deleteMeta, getEntry, putEntry, deleteEntry, getAllEntries, clearEntries,
 } from "./db.js";
-import { mergeEntries, mergeCycle, mergeCabinet, sameEntryContent } from "./merge.js";
+import { mergeEntries, mergeCycle, mergeCabinet, mergeLayout, sameEntryContent } from "./merge.js";
 import { todayStr, shiftDate } from "./dates.js";
 
 const PERSISTED_KEYS = ["gh_owner", "gh_repo", "gh_branch", "gh_path_prefix"];
@@ -28,6 +28,7 @@ const TOKEN_SESSION_KEY = "tcm_gh_token";
 const RECENT_DAYS = 14;
 const CYCLE_FILE = "cycle.json";
 const CABINET_FILE = "cabinet.json";
+const LAYOUT_FILE = "layout.json";
 const DAY_FILE = /^(\d{4}-\d{2}-\d{2})\.json$/;
 
 /* ---------------- Status + change events ---------------- */
@@ -361,13 +362,14 @@ export async function fetchDay(date) {
   }
 }
 
-/* ---------------- Whole-file documents (cycle.json, cabinet.json) ----------------
+/* ---------------- Whole-file documents (cycle.json, cabinet.json, layout.json) ----------------
    Unlike days, these are single small files each device edits in place, so
    they follow the same sha-checked write + merge path as a day. */
 
 const DOCS = {
   cycle: { file: CYCLE_FILE, metaKey: "cycle", empty: { periods: [], spotting: [] }, merge: mergeCycle, fields: ["periods", "spotting"] },
   cabinet: { file: CABINET_FILE, metaKey: "cabinet", empty: { items: [] }, merge: mergeCabinet, fields: ["items"] },
+  layout: { file: LAYOUT_FILE, metaKey: "layout", empty: { layout: null }, merge: mergeLayout, fields: ["layout"] },
 };
 
 async function getDoc(kind) {
@@ -391,6 +393,8 @@ export const getCycle = () => getDoc("cycle");
 export const saveCycle = (data) => saveDoc("cycle", data);
 export const getCabinet = () => getDoc("cabinet");
 export const saveCabinet = (data) => saveDoc("cabinet", data);
+export const getLayoutDoc = () => getDoc("layout");
+export const saveLayoutDoc = (data) => saveDoc("layout", data);
 
 export function queueDocPush(kind) {
   return enqueue(kind, () => pushDoc(kind));

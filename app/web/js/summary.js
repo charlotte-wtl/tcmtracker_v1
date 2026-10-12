@@ -4,6 +4,8 @@
 
 import { T } from "./i18n.js";
 import { SCHEMA, ALWAYS_ON, CONDITIONAL, RETIRED, NONE_MARKERS, MOOD_WORDS } from "./schema.js";
+import { sortSections, orderedFields } from "./layout.js";
+import { PERIOD_PHASE, PRE_PHASE } from "./cycle-store.js";
 
 // Supplements are stored under their own key (they used to be their own
 // section) but read out inside the diet section, where they are now ticked.
@@ -18,14 +20,29 @@ function cabinetLines(cabinet = {}, label) {
   return lines;
 }
 
-export function sectionOrder(phase) {
-  return ALWAYS_ON.concat(CONDITIONAL.filter((id) => SCHEMA[id].condition(phase)));
+// A period can start partway through a day that began as 經前: that day keeps
+// its 經前 answers too. meta.extraPhases records the earlier phase, and only
+// counts while the day is 經期.
+export function dayPhases(phase, extraPhases = []) {
+  const extra = phase === PERIOD_PHASE ? (extraPhases || []).filter((p) => p && p !== phase) : [];
+  return [phase].concat(extra);
+}
+
+// The day's phases in the order they happened, e.g. "經前 → 經期".
+export function phaseLabel(meta = {}) {
+  const [phase, ...earlier] = dayPhases(meta.cyclePhase, meta.extraPhases);
+  return earlier.concat(phase ? [phase] : []).map(T).join(" → ");
+}
+
+export function sectionOrder(phase, extraPhases = []) {
+  const phases = dayPhases(phase, extraPhases);
+  return sortSections(ALWAYS_ON.concat(CONDITIONAL.filter((id) => phases.some((p) => SCHEMA[id].condition(p)))));
 }
 
 // What gets read out: the sections asked today, plus retired ones, which only
 // show when a day logged before they were retired has answers in them.
-export function readOrder(phase) {
-  return sectionOrder(phase).concat(RETIRED);
+export function readOrder(phase, extraPhases = []) {
+  return sectionOrder(phase, extraPhases).concat(RETIRED);
 }
 
 function detailVisible(field, value) {
@@ -68,7 +85,7 @@ function summarizeDetailValue(dv) {
 // One section's answered fields as [{ label, text }].
 export function sectionLines(secId, ans = {}, all = {}) {
   const lines = [];
-  SCHEMA[secId].fields.forEach((f) => {
+  orderedFields(secId).forEach((f) => {
     if (f.type === "cabinet") { cabinetLines(all.cabinet, T(f.label)).forEach((l) => lines.push(l)); return; }
     const v = ans[f.id];
     const other = ans[f.id + "__other"];
@@ -108,14 +125,14 @@ export function entryHasData(entry) {
 export function summarizeEntry(entry) {
   const answers = (entry && entry.answers) || {};
   const meta = answers.meta || {};
-  const order = sectionOrder(meta.cyclePhase);
+  const order = sectionOrder(meta.cyclePhase, meta.extraPhases);
   return {
     mood: meta.moodRating ? T(MOOD_WORDS[meta.moodRating - 1]) : "",
-    phase: meta.cyclePhase ? T(meta.cyclePhase) : "",
+    phase: phaseLabel(meta),
     advice: answers.advice?.text || "",
     doneCount: order.filter((id) => (entry.done || []).includes(id)).length,
     totalCount: order.length,
-    sections: readOrder(meta.cyclePhase)
+    sections: readOrder(meta.cyclePhase, meta.extraPhases)
       .map((secId) => ({ secId, title: T(SCHEMA[secId].title), lines: sectionLines(secId, answers[secId], answers) }))
       .filter((s) => s.lines.length),
   };

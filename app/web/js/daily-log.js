@@ -11,10 +11,12 @@ import {
 import { getEntry, putEntry } from "./db.js";
 import { queuePush, fetchDay, getCycle } from "./sync.js";
 import { todayStr, shiftDate, parseDateStr } from "./dates.js";
-import { sectionOrder, readOrder, getActiveDetails, sectionLines } from "./summary.js";
+import { sectionOrder, readOrder, getActiveDetails, sectionLines, phaseLabel } from "./summary.js";
 import { mergeEntries, sameEntryContent } from "./merge.js";
 import { cycleStatus, periodCovering, likelyPhase } from "./cycle.js";
-import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
+import { startPeriod, endPeriod, PERIOD_PHASE, PRE_PHASE, keepEarlierPhase } from "./cycle-store.js";
+import { orderedFields, orderedOptions } from "./layout.js";
+import { openLayoutEditor } from "./layout-editor.js";
 import { listItems, addItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { openSheet, choose } from "./ui.js";
 
@@ -26,7 +28,7 @@ const TONE_VARS = {
   rose: "var(--tone-rose)",
 };
 
-// `cabinet` is not a section any more — supplements are ticked inside 8. 飲食 —
+// `cabinet` is not a section any more — supplements are ticked inside 飲食 —
 // but it stays its own key so days recorded before the move still read back.
 function blankAnswers() {
   const a = { meta: {}, cabinet: {} };
@@ -87,6 +89,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     </div>
     <div id="cycleField"></div>
     <div id="sections"></div>
+    <div class="reorder-row"><button type="button" class="btn ghost" id="reorderBtn"></button></div>
     <div class="actionbar">
       <button class="btn ghost" id="resetBtn"></button>
       <div class="spacer"></div>
@@ -103,7 +106,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
   const $ = (sel) => root.querySelector(sel);
 
   function currentOrder() {
-    return sectionOrder(state.answers.meta.cyclePhase);
+    return sectionOrder(state.answers.meta.cyclePhase, state.answers.meta.extraPhases);
   }
   function flowOrder() { return currentOrder(); }
   function firstIncompleteId(order) { return order.find((id) => !state.done.has(id)); }
@@ -122,7 +125,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
   function renderOptions(secId, field, value) {
     const isMulti = field.type === "multi";
-    let html = `<div class="opts">` + field.options.map((opt) => {
+    let html = `<div class="opts">` + orderedOptions(secId, field).map((opt) => {
       const on = isMulti ? (Array.isArray(value) && value.includes(opt)) : (value === opt);
       return `<button type="button" class="opt${on ? " on" : ""}" data-sec="${secId}" data-field="${field.id}" data-type="${field.type}" data-value="${escAttr(opt)}">${T(opt)}</button>`;
     }).join("") + `</div>`;
@@ -204,7 +207,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     return `<div class="field"><label class="q">${T(field.label)}</label>${control}${renderDetails(secId, field, value)}</div>`;
   }
 
-  function renderSection(secId) {
+  function renderSection(secId, index) {
     const sec = SCHEMA[secId];
     const isDone = state.done.has(secId);
     const isExpanded = state.expanded.has(secId);
@@ -215,14 +218,14 @@ export function mountDailyLog(root, { onSaveStatus }) {
     const tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
     let body = "";
     if (isExpanded) {
-      body = `<div class="sec-body">` + sec.fields.map((f) => renderField(secId, f)).join("") +
+      body = `<div class="sec-body">` + orderedFields(secId).map((f) => renderField(secId, f)).join("") +
         `<div class="btnrow"><button class="btn accent" data-action="done" data-sec="${secId}">${T("完成本節，繼續下一節||Done, next section")}</button></div></div>`;
     }
     const justEntered = state.enteredIds.has(secId);
     const toneVar = TONE_VARS[SECTION_COLORS[secId]] || "var(--line-strong)";
     return `<section class="sec${justEntered ? " enter" : ""}" data-sec="${secId}">
       <div class="sec-header" data-action="toggle" data-sec="${secId}" style="--sec-tone:${toneVar}">
-        <h2>${T(sec.title)}</h2><span class="tag">${tag}</span>
+        <h2>${index + 1}. ${T(sec.title)}</h2><span class="tag">${tag}</span>
       </div>
       ${body}
     </section>`;
@@ -344,7 +347,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
           <label for="cabKind">${T("類型||Type")}</label>
           <div class="opts" id="cabKind">${Object.entries(KINDS).map(([k, label]) =>
             `<button type="button" class="opt${k === startKind ? " on" : ""}" data-kind="${k}">${T(label)}</button>`).join("")}</div>
-          <p class="settings-hint">${T("茶飲在「飲品」欄搜尋，護膚品在「9. 皮膚」搜尋，都不會出現在保健品的勾選清單。||Teas are searched under Beverage and skincare under 9. Skin; neither appears in the supplement tick list.")}</p>
+          <p class="settings-hint">${T("茶飲在「飲品」欄搜尋，護膚品在「皮膚」搜尋，都不會出現在保健品的勾選清單。||Teas are searched under Beverage and skincare under Skin; neither appears in the supplement tick list.")}</p>
           <label for="cabSchedule">${T("頻率||How often")}</label>
           <div class="opts" id="cabSchedule">${Object.entries(SCHEDULES).map(([k, label], i) =>
             `<button type="button" class="opt${i === 0 ? " on" : ""}" data-schedule="${k}">${T(label)}</button>`).join("")}</div>
@@ -449,12 +452,24 @@ export function mountDailyLog(root, { onSaveStatus }) {
       `<div class="opts">` + CYCLE_FIELD.options.map((opt) => {
         const on = value === opt;
         return `<button type="button" class="opt${on ? " on" : ""}" data-cycle="1" data-value="${escAttr(opt)}">${T(opt)}</button>`;
-      }).join("") + `</div>
+      }).join("") + `</div>${renderAlsoPre()}
       <div class="cycle-line">
         <span>${escHtml(cycleLineText())}</span>
         <button type="button" class="btn ghost" data-cycle-modify="1">${T("修改||Adjust")}</button>
       </div></div>`;
     $("#cycleField").innerHTML = html;
+  }
+
+  // On the day a period starts, the morning may still have been 經前: this
+  // keeps both sets of questions on the day.
+  function renderAlsoPre() {
+    const meta = state.answers.meta;
+    if (meta.cyclePhase !== PERIOD_PHASE) return "";
+    const on = (meta.extraPhases || []).includes(PRE_PHASE);
+    const covering = periodCovering(state.periods, state.date);
+    if (!on && covering && covering.start !== state.date) return "";
+    return `<div class="opts also-pre"><button type="button" class="opt${on ? " on" : ""}" data-also-pre="1">${
+      T("經期今天才開始，同時記錄經前狀態||Period started partway through today — also log pre-period")}</button></div>`;
   }
 
   function buddySvg(index, filled) {
@@ -505,7 +520,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
     renderMood();
 
     const order = currentOrder();
-    $("#sections").innerHTML = order.map(renderSection).join("");
+    $("#sections").innerHTML = order.map((id, i) => renderSection(id, i)).join("");
+    $("#reorderBtn").textContent = T("調整日誌順序||Reorder the log");
     state.enteredIds.clear();
     $("#dateInput").value = state.date;
     $("#dateInput").max = todayStr();
@@ -520,10 +536,22 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
   $("#cycleField").addEventListener("click", (e) => {
     if (e.target.closest("[data-cycle-modify]")) { openCycleSheet(); return; }
+    if (e.target.closest("[data-also-pre]")) {
+      const meta = state.answers.meta;
+      const extra = meta.extraPhases || [];
+      meta.extraPhases = extra.includes(PRE_PHASE) ? extra.filter((p) => p !== PRE_PHASE) : [...extra, PRE_PHASE];
+      if (!meta.extraPhases.length) delete meta.extraPhases;
+      markDirty();
+      renderApp();
+      scheduleAutoSave();
+      return;
+    }
     const btn = e.target.closest("button[data-cycle]");
     if (!btn) return;
     const cur = state.answers.meta.cyclePhase;
-    state.answers.meta.cyclePhase = cur === btn.dataset.value ? "" : btn.dataset.value;
+    const next = cur === btn.dataset.value ? "" : btn.dataset.value;
+    keepEarlierPhase(state.answers.meta, next);
+    state.answers.meta.cyclePhase = next;
     delete state.answers.meta.phaseAuto; // your choice now, not a guess
     markDirty();
     renderApp();
@@ -730,10 +758,12 @@ export function mountDailyLog(root, { onSaveStatus }) {
   $("#backToTodayBtn").addEventListener("click", () => { loadDate(todayStr()); window.scrollTo(0, 0); });
 
   $("#resetBtn").addEventListener("click", () => {
-    const { cyclePhase, phaseAuto } = state.answers.meta;
-    const advice = state.answers.advice;
+    const { cyclePhase, phaseAuto, analysisRuns } = state.answers.meta;
+    const { advice, analysis } = state.answers;
     state.answers = blankAnswers();
     if (advice) state.answers.advice = advice;
+    if (analysis) state.answers.analysis = analysis;
+    if (analysisRuns) state.answers.meta.analysisRuns = analysisRuns;
     state.answers.meta.cyclePhase = cyclePhase;
     if (phaseAuto) state.answers.meta.phaseAuto = true;
     state.done = new Set();
@@ -746,7 +776,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
   /* ---------------- Summary ---------------- */
 
   function buildSummary(prevAdvice = null) {
-    const order = readOrder(state.answers.meta.cyclePhase);
+    const order = readOrder(state.answers.meta.cyclePhase, state.answers.meta.extraPhases);
     let out = `【${T("每日中醫日記||Daily TCM Log")}】${formatTicketDate(state.date)}\n`;
     // The cycle day used to be typed by hand; it is computed now, so the
     // analysis still gets it.
@@ -756,6 +786,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
         + (cyc.stats.count ? `（${T("平均||average ")}${cyc.stats.average}${T("天||days")}）` : "")
         + (cyc.inPeriod ? "，" + T("經期中||on period") : "") + "\n";
     }
+    const phase = phaseLabel(state.answers.meta);
+    if (phase) out += T(CYCLE_FIELD.label) + "：" + phase + "\n";
     out += T("整體感覺||Overall mood") + "：" + (state.answers.meta.moodRating ? T(MOOD_WORDS[state.answers.meta.moodRating - 1]) : "") + "\n\n";
     order.forEach((secId) => {
       const lines = sectionLines(secId, state.answers[secId], state.answers);
@@ -849,6 +881,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
     const phase = likelyPhase(state.periods, state.date);
     const value = phase ? PHASE_OPTIONS[phase] : "";
     if (value === (meta.cyclePhase || "")) return false;
+    // A guessed 經前 that turns into 經期 keeps whatever was already answered.
+    if (Object.keys(state.answers.preperiod || {}).length) keepEarlierPhase(meta, value);
     if (value) { meta.cyclePhase = value; meta.phaseAuto = true; }
     else { delete meta.cyclePhase; delete meta.phaseAuto; }
     return true;
@@ -986,9 +1020,20 @@ export function mountDailyLog(root, { onSaveStatus }) {
     const prev = await previousAdvice(date);
     if (state.date !== date) return; // switched days while looking it up
     const summary = buildSummary(prev);
-    saveCurrent({ completedAt: new Date().toISOString() });
+    const at = new Date().toISOString();
+    recordAnalysisRun(at);
+    saveCurrent({ completedAt: at });
     showSummaryModal(summary);
   });
+
+  // Every run is kept (not just the latest), so trends can later be read off
+  // when and how often a day was analysed. Stored in meta so it merges across
+  // devices like any other answer.
+  function recordAnalysisRun(at) {
+    const runs = state.answers.meta.analysisRuns || [];
+    state.answers.meta.analysisRuns = [...runs, at];
+    markDirty();
+  }
 
   function showSummaryModal(text) {
     const backdrop = document.createElement("div");
@@ -1018,6 +1063,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
   }
 
   window.addEventListener("tcm:lang-change", () => renderApp());
+  window.addEventListener("tcm:layout-changed", () => renderApp());
+  $("#reorderBtn").addEventListener("click", () => openLayoutEditor());
 
   async function refreshPeriods() {
     state.periods = (await getCycle()).periods || [];

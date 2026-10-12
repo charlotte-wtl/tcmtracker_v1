@@ -26,7 +26,7 @@ export function activeItems(cabinet) {
     .sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : (a.kind < b.kind ? -1 : 1)));
 }
 
-// Charlotte's skincare shelf, put in once so the 9. 皮膚 search has
+// Charlotte's skincare shelf, put in once so the 皮膚 search has
 // something to offer from day one. Fixed ids keep two devices seeding at the
 // same time from doubling up, and updatedAt 1 loses to any real edit, so an
 // item removed on one device is never brought back by another's seed.
