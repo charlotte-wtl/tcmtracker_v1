@@ -454,6 +454,55 @@ async function applyRemoteDoc(kind, sha, remote, userId) {
   return true;
 }
 
+/* ---------------- Whole history, other repos ---------------- */
+
+// Brings down every day not yet on this device — the cycle insights read
+// across all cycles, while a normal pull only keeps the last two weeks.
+export async function downloadAllDays(onProgress = () => {}) {
+  if ((await configState()) !== "ready") return { ok: false, error: await configState() };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  let index = await loadIndex();
+  if (!index || index.userId !== userId) { await pullRecent(); index = await loadIndex(); }
+  if (!index || index.userId !== userId) return { ok: false, error: "no-index" };
+  const have = new Set((await getAllEntries()).map((e) => e.date));
+  const missing = Object.entries(index.files)
+    .map(([name, sha]) => [(DAY_FILE.exec(name) || [])[1], sha])
+    .filter(([date]) => date && !have.has(date));
+  const fetched = [];
+  try {
+    for (const [date, sha] of missing) {
+      await applyRemoteEntry(date, sha, await readBlob(cfg, sha), userId);
+      fetched.push(date);
+      onProgress(fetched.length, missing.length);
+    }
+  } catch (e) {
+    announce(fetched);
+    return { ok: false, error: networkError(e), count: fetched.length };
+  }
+  announce(fetched);
+  return { ok: true, count: fetched.length };
+}
+
+// A text file from any repo the token can read ("owner/repo", "path/file.md").
+export async function readRepoText(repoFull, path) {
+  const cfg = await getConfig();
+  if (!cfg.gh_token) return { ok: false, error: "needs-token" };
+  const cleanPath = String(path || "").replace(/^\/+/, "").split("/").map(encodeURIComponent).join("/");
+  try {
+    const res = await fetch(`https://api.github.com/repos/${repoFull}/contents/${cleanPath}`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${cfg.gh_token}`, Accept: "application/vnd.github.raw+json" },
+    });
+    if (res.status === 404 || res.status === 403) return { ok: false, error: "no-access" };
+    if (res.status === 401) return { ok: false, error: "bad-token" };
+    if (!res.ok) return { ok: false, error: `github-${res.status}` };
+    return { ok: true, text: await res.text() };
+  } catch (e) {
+    return { ok: false, error: networkError(e) };
+  }
+}
+
 /* ---------------- Pull ---------------- */
 
 let pullInFlight = null;

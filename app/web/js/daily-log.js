@@ -1041,9 +1041,10 @@ export function mountDailyLog(root, { onSaveStatus }) {
     backdrop.innerHTML = `<div class="modal">
       <h2>${T("今日摘要 — 複製後貼到你的中醫回饋對話||Today's summary — copy this into your TCM feedback chat")}</h2>
       <textarea readonly id="summaryText"></textarea>
-      <p class="settings-hint">${T("拿到回覆後，貼到日誌最下方的「分析建議」。||When the reply comes back, paste it into Analysis advice at the bottom of the log.")}</p>
+      <p class="settings-hint">${T("拿到回覆後，貼到日誌最下方的「分析建議」。或直接在 App 內用你的中醫 skill 分析。||When the reply comes back, paste it into Analysis advice at the bottom of the log — or analyse it right here in the app with your TCM skill.")}</p>
       <div class="btnrow">
-        <button class="btn accent" id="copySummaryBtn">${T("複製||Copy")}</button>
+        <button class="btn accent" id="inAppBtn">${T("在 App 內分析||Analyse in the app")}</button>
+        <button class="btn" id="copySummaryBtn">${T("複製||Copy")}</button>
         <button class="btn ghost" id="closeSummaryBtn">${T("關閉||Close")}</button>
       </div>
     </div>`;
@@ -1059,6 +1060,12 @@ export function mountDailyLog(root, { onSaveStatus }) {
       setTimeout(() => { this.textContent = copyLabel; }, 1800);
     });
     backdrop.querySelector("#closeSummaryBtn").addEventListener("click", () => backdrop.remove());
+    backdrop.querySelector("#inAppBtn").addEventListener("click", async () => {
+      backdrop.remove();
+      const date = state.date;
+      await flushAutoSaveNow();
+      window.dispatchEvent(new CustomEvent("tcm:open-analysis", { detail: { date, start: true } }));
+    });
     backdrop.addEventListener("click", (e) => { if (e.target === backdrop) backdrop.remove(); });
   }
 
