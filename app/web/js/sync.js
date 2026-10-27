@@ -13,6 +13,7 @@
 
 import {
   getMeta, setMeta, deleteMeta, getEntry, putEntry, deleteEntry, getAllEntries, clearEntries,
+  getPhoto, putPhoto, getAllPhotos,
 } from "./db.js";
 import { mergeEntries, mergeCycle, mergeCabinet, sameEntryContent } from "./merge.js";
 import { todayStr, shiftDate } from "./dates.js";
@@ -184,6 +185,60 @@ async function writeFile(cfg, path, data, sha, message) {
   if (res.status === 409 || res.status === 422) return { ok: false, conflict: true };
   const body = await res.json().catch(() => ({}));
   return { ok: false, error: body.message || `github-${res.status}` };
+}
+
+// Photos are binary and only ever replaced whole, so the sha needed to
+// overwrite one is looked up just before writing.
+async function blobToBase64(blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < buf.length; i += 0x8000) binary += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+async function remoteSha(cfg, path) {
+  const res = await gh(cfg, `contents/${path}?ref=${encodeURIComponent(cfg.gh_branch)}`);
+  if (res.status === 404) return undefined;
+  if (!res.ok) throw new Error(`github-${res.status}`);
+  return (await res.json()).sha;
+}
+
+async function writeBinary(cfg, path, blob, message) {
+  const sha = await remoteSha(cfg, path);
+  const res = await gh(cfg, `contents/${path}`, {
+    method: "PUT",
+    body: JSON.stringify({ message, content: await blobToBase64(blob), branch: cfg.gh_branch, ...(sha ? { sha } : {}) }),
+  });
+  if (res.status === 200 || res.status === 201) return { ok: true, sha: (await res.json()).content.sha };
+  const body = await res.json().catch(() => ({}));
+  return { ok: false, error: body.message || `github-${res.status}` };
+}
+
+export function photoPath(date, kind = "tongue") { return `photos/${date}-${kind}.jpg`; }
+
+// Uploads a day's photo to the private data repo (never the public app repo).
+export function queuePhotoPush(key) {
+  return enqueue(`photo:${key}`, () => pushPhoto(key));
+}
+
+async function pushPhoto(key) {
+  if ((await configState()) !== "ready") return { ok: false, error: "not-ready" };
+  const rec = await getPhoto(key);
+  if (!rec || !isDirty(rec)) return { ok: true };
+  const cfg = await getConfig();
+  const userId = await getUserId();
+  status("syncing");
+  try {
+    const result = await writeBinary(cfg, userPath(cfg, userId, photoPath(rec.date, rec.kind)), rec.blob, `${userId}: ${rec.kind} photo ${rec.date}`);
+    if (!result.ok) { status("error", result.error); return result; }
+    const now = await getPhoto(key);
+    if (now) await putPhoto({ ...now, syncedAt: rec.updatedAt, remoteSha: result.sha });
+    status("synced");
+    return { ok: true };
+  } catch (e) {
+    status("error", networkError(e));
+    return { ok: false, error: networkError(e) };
+  }
 }
 
 /* ---------------- Remote index (what exists on GitHub) ---------------- */
@@ -517,7 +572,8 @@ export async function syncAllPending() {
   if ((await configState()) !== "ready") return;
   const all = await getAllEntries();
   const docs = await Promise.all(Object.keys(DOCS).map(async (kind) => (isDirty(await getDoc(kind)) ? queueDocPush(kind) : null)));
-  await Promise.all([...all.filter(isDirty).map((e) => queuePush(e.date)), ...docs.filter(Boolean)]);
+  const photos = (await getAllPhotos()).filter(isDirty).map((p) => queuePhotoPush(p.key));
+  await Promise.all([...all.filter(isDirty).map((e) => queuePush(e.date)), ...docs.filter(Boolean), ...photos]);
 }
 
 /* ---------------- Account ---------------- */
@@ -525,7 +581,8 @@ export async function syncAllPending() {
 export async function hasUnsyncedData() {
   const all = await getAllEntries();
   const docs = await Promise.all(Object.keys(DOCS).map((kind) => getDoc(kind)));
-  return all.some(isDirty) || docs.some(isDirty);
+  const photos = await getAllPhotos();
+  return all.some(isDirty) || docs.some(isDirty) || photos.some(isDirty);
 }
 
 // Points this device at a user id. Switching to a different id clears the

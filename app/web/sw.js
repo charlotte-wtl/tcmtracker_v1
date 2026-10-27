@@ -1,7 +1,7 @@
 // Minimal app-shell cache so the log stays usable offline. Data lives in
 // IndexedDB (db.js), never in this cache — the service worker only caches
 // static app files so the UI itself can load with no network.
-const CACHE = "tcm-app-shell-v15";
+const CACHE = "tcm-app-shell-v16";
 const SHELL_FILES = [
   "./",
   "./index.html",
@@ -24,6 +24,8 @@ const SHELL_FILES = [
   "./js/ui.js",
   "./js/db.js",
   "./js/schema.js",
+  "./js/tongue-photo.js",
+  "./js/tongue-colour.js",
   "./js/i18n.js",
   "./manifest.json",
 ];
