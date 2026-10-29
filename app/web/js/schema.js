@@ -261,8 +261,12 @@ export const SCHEMA = {
           { id:"location", type:"multi", label:"位置||Where", options:SKIN_AREAS },
           { id:"otherLocation", type:"text", label:"其他位置||Other location" }
         ] },
-      // Picked from the cabinet's skincare the way teas are under 飲品.
-      { id:"skincare", type:"text", label:"護膚品||Skincare", suggest:"skincare" },
+      // Picked from the cabinet's skincare the way teas are under 飲品. Asked
+      // about yesterday: the log is filled first thing, and this morning's
+      // skin reflects what went on last night.
+      { id:"skincareYesterday", type:"text", label:"昨天（包括昨晚）用的護膚品||Skincare used yesterday (including last night)", suggest:"skincare" },
+      // Retired: before 10/29 this meant the same day's skincare.
+      { id:"skincare", retired:true, type:"text", label:"護膚品（當天）||Skincare (same day)" },
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
@@ -341,6 +345,7 @@ export const SCHEMA = {
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
+        help:"如果只剩少量啡色、不用衛生巾，經期一般已經結束：在首頁或「修改」把經期結束日定在最後一天有紅色出血的日子，啡色記錄在「婦科觀察」的點滴出血。||If there is only a little brown and no pad is needed, the period has normally ended: set the end date (Home, or Adjust) to the last day with red bleeding, and log the brown as spotting under Cycle signs.",
         options:["很少||Very light","正常||Normal","偏多||Heavy","大量||Very heavy"] },
       { id:"padChanges", type:"single", label:"今天更換衛生用品次數||Pads / cups changed today",
         options:["1–2次||1–2","3–4次||3–4","5–6次||5–6","7次以上||7+"] },
@@ -374,12 +379,22 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
+  // 經後: the days after bleeding stops, when TCM reads how well 血 is
+  // rebuilt (血海空虛). Discharge, spotting and breast signs are asked in
+  // 婦科觀察 above, so they are not repeated here.
   postperiod: {
     title: "11. 經後狀態||11. Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
-      { id:"lingering", type:"multi", label:"是否有延續的不適||Lingering discomfort",
-        options:["無||None","腰痠||Back soreness","小腹隱痛（按著舒服）||Dull belly ache (better with pressure)","頭暈||Dizziness","情緒低落||Low mood","持續||Ongoing"] },
+      { id:"bleedingStatus", type:"single", label:"經血停了嗎||Has the bleeding stopped?", allowOther:false,
+        help:"只剩少量啡色、要用護墊或者只沾到內褲的，是經血尾段的舊血，一般當作經期已經結束，在「婦科觀察」的點滴出血記錄「褐色」就可以。仍然要用衛生巾、有紅色血，就未算完，回到經期記錄。經期連尾段超過7天、褐色點滴超過3天仍未停，或者每次都這樣，就要跟醫生提。||A little brown that only needs a liner or just marks your underwear is old blood from the tail end; it is normally counted as the period having ended. Log it as brown spotting under Cycle signs. If you still need a pad or it is red, the period isn't over. If bleeding including the tail lasts over 7 days, brown spotting goes on more than 3 days, or it happens every cycle, mention it to your doctor.",
+        options:["已完全停止||Fully stopped","只有少量啡色（舊血）||Only a little brown (old blood)","仍有紅色出血||Still some red bleeding"] },
+      { id:"lingering", type:"multi", label:"經後不適||Discomfort since the period",
+        options:["無||None","小腹隱痛，按著舒服||Dull belly ache, better with pressure","小腹脹痛或刺痛||Distending or stabbing belly pain","腰痠||Back soreness","頭暈或站起來眼黑||Dizzy, or vision dims on standing","眼花或眼乾||Blurry or dry eyes","心悸||Palpitations","手腳發麻||Numb hands or feet","情緒低落||Low mood"] },
+      { id:"energyRecovery", type:"single", label:"精力恢復得怎樣||How is your energy coming back?", allowOther:false,
+        options:["已經恢復||Back to normal","慢慢恢復中||Coming back slowly","仍然好累||Still very tired"] },
+      { id:"cravings", type:"multi", label:"經後想吃甚麼||Cravings since the period",
+        options:["沒有特別||Nothing in particular","甜食||Sweets","肉類||Meat","鹹的||Salty food","冰凍的||Something cold"] },
       // Retired — now read from the daily energy, mood and cycle-signs answers.
       { id:"recoverySpeed", retired:true, type:"single", label:"精力恢復速度||Energy recovery speed",
         options:["1–2天內||Within 1–2 days","3天以上||3+ days","持續疲憊未恢復||Ongoing fatigue"] },
