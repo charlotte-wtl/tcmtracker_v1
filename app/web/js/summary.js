@@ -65,11 +65,19 @@ function summarizeDetailValue(dv) {
   return Array.isArray(dv) ? dv.map(T).join("、") : T(dv);
 }
 
+// The photo itself isn't sent anywhere; the analysis gets the reading in words.
+function photoText(v) {
+  if (!v || !v.takenAt) return "";
+  const cond = v.reliable ? T("拍攝條件齊全||all photo conditions met") : T("拍攝條件不齊全||photo conditions not all met");
+  return `${T(v.words || "")}（${cond}）`;
+}
+
 // One section's answered fields as [{ label, text }].
 export function sectionLines(secId, ans = {}, all = {}) {
   const lines = [];
   SCHEMA[secId].fields.forEach((f) => {
     if (f.type === "cabinet") { cabinetLines(all.cabinet, T(f.label)).forEach((l) => lines.push(l)); return; }
+    if (f.type === "photo") { const t = photoText(ans[f.id]); if (t) lines.push({ label: T("舌照顏色讀數||Tongue photo reading"), text: t }); return; }
     const v = ans[f.id];
     const other = ans[f.id + "__other"];
     const hasValue = isFilled(v);

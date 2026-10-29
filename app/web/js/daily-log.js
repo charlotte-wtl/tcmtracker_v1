@@ -17,6 +17,7 @@ import { cycleStatus, periodCovering, likelyPhase } from "./cycle.js";
 import { startPeriod, endPeriod, PERIOD_PHASE } from "./cycle-store.js";
 import { listItems, addItem, KINDS, SCHEDULES } from "./cabinet-store.js";
 import { openSheet, choose } from "./ui.js";
+import { renderPhotoField, hydratePhotos, openPhotoCapture, removePhoto } from "./tongue-photo.js";
 
 function clone(v) { return JSON.parse(JSON.stringify(v)); }
 
@@ -197,11 +198,32 @@ export function mountDailyLog(root, { onSaveStatus }) {
     else if (field.type === "text") control = field.multiline
       ? `<textarea data-sec="${secId}" data-field="${field.id}" data-type="text">${escHtml(value || "")}</textarea>`
       : `<input type="text" data-sec="${secId}" data-field="${field.id}" data-type="text"${field.suggest ? ` data-suggest="${field.suggest}"` : ""} value="${escAttr(value || "")}">`;
-    else if (field.type === "number") control = `<input type="number" data-sec="${secId}" data-field="${field.id}" data-type="number" value="${escAttr(value || "")}">`;
+    else if (field.type === "number") control = `<input type="number"${field.step ? ` step="${field.step}" inputmode="decimal"` : ` inputmode="numeric"`} data-sec="${secId}" data-field="${field.id}" data-type="number" value="${escAttr(value || "")}">`;
+    else if (field.type === "time") control = renderTime(secId, field, value);
+    else if (field.type === "photo") control = renderPhotoField(secId, field, value, state.date);
     else if (field.type === "cabinet") control = renderSupplementTicks();
     if (field.type === "multi" && field.perItemSeverity) control += renderPerItemSeverity(secId, field, value);
     if (field.suggest) control += renderCabinetSearch(field.suggest);
-    return `<div class="field"><label class="q">${T(field.label)}</label>${control}${renderDetails(secId, field, value)}</div>`;
+    return `<div class="field"><label class="q">${T(field.label)}</label>${renderHelp(field.help, undefined, secId + "." + field.id)}${control}${renderDetails(secId, field, value)}</div>`;
+  }
+
+  // A tap-to-open explanation under a question or at the top of a section.
+  // Every tap re-renders the section, so which explanations are open is kept
+  // here, or one would snap shut as soon as you answered the question under it.
+  const openHelps = new Set();
+  function renderHelp(help, label = "說明||How to tell", key = "") {
+    if (!help) return "";
+    const paras = T(help).split("\n").map((p) => `<p>${escHtml(p)}</p>`).join("");
+    return `<details class="help" data-help="${escAttr(key)}"${openHelps.has(key) ? " open" : ""}><summary>${T(label)}</summary>${paras}</details>`;
+  }
+
+  // Times used to be typed freely ("11", "1137"); an old answer that isn't a
+  // clock time is shown under the picker until it's replaced.
+  function renderTime(secId, field, value) {
+    const v = value || "";
+    const clock = /^\d{2}:\d{2}$/.test(v);
+    return `<input type="time" data-sec="${secId}" data-field="${field.id}" data-type="text" value="${clock ? escAttr(v) : ""}">`
+      + (v && !clock ? `<p class="settings-hint">${T("原本記錄：||Previously recorded: ")}${escHtml(v)}</p>` : "");
   }
 
   function renderSection(secId) {
@@ -215,7 +237,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
     const tag = isDone ? (filledCount > 0 ? T("已完成||Done") : T("已略過||Skipped")) : "";
     let body = "";
     if (isExpanded) {
-      body = `<div class="sec-body">` + sec.fields.map((f) => renderField(secId, f)).join("") +
+      const intro = sec.intro ? `<p class="sec-intro">${escHtml(T(sec.intro))}</p>` : "";
+      body = `<div class="sec-body">` + intro + renderHelp(sec.help, "怎樣做||How to do it", secId) + sec.fields.map((f) => renderField(secId, f)).join("") +
         `<div class="btnrow"><button class="btn accent" data-action="done" data-sec="${secId}">${T("完成本節，繼續下一節||Done, next section")}</button></div></div>`;
     }
     const justEntered = state.enteredIds.has(secId);
@@ -506,6 +529,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
 
     const order = currentOrder();
     $("#sections").innerHTML = order.map(renderSection).join("");
+    hydratePhotos($("#sections"));
     state.enteredIds.clear();
     $("#dateInput").value = state.date;
     $("#dateInput").max = todayStr();
@@ -646,6 +670,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
       saveCurrent();
       return;
     }
+    const photoAct = e.target.closest("[data-photo-act]");
+    if (photoAct) { handlePhoto(photoAct.dataset.photoAct, photoAct.dataset.sec, photoAct.dataset.field); return; }
     const take = e.target.closest("[data-cab-take]");
     if (take) { toggleCabinetItem(take.dataset.cabTake); return; }
     if (e.target.closest("[data-cab-all]")) { toggleAllSupplements(); return; }
@@ -687,6 +713,38 @@ export function mountDailyLog(root, { onSaveStatus }) {
       scheduleAutoSave();
     }
   });
+
+  async function handlePhoto(act, secId, fieldId) {
+    const date = state.date;
+    if (act === "take") {
+      openPhotoCapture({
+        date,
+        onSaved: (value) => {
+          if (state.date !== date) return;
+          setFieldValue(secId, fieldId, value);
+          renderApp();
+          scheduleAutoSave();
+        },
+      });
+    } else if (act === "delete") {
+      const ok = await choose({
+        title: T("刪除這天的舌照？||Delete this day's tongue photo?"),
+        text: T("手機上的照片和讀數會刪除；已備份到私人資料庫的那一份會保留。||The photo and its reading are removed from this phone; the copy already backed up to your private data repo stays.")
+      , actions: [{ label: T("刪除||Delete"), kind: "accent", value: true }, { label: T("取消||Cancel"), kind: "ghost", value: false }] });
+      if (!ok || state.date !== date) return;
+      await removePhoto(date);
+      setFieldValue(secId, fieldId, "");
+      renderApp();
+      scheduleAutoSave();
+    }
+  }
+
+  // "toggle" doesn't bubble, so it is caught on the way down.
+  $("#sections").addEventListener("toggle", (e) => {
+    const d = e.target;
+    if (!d.matches || !d.matches("details.help")) return;
+    if (d.open) openHelps.add(d.dataset.help); else openHelps.delete(d.dataset.help);
+  }, true);
 
   $("#sections").addEventListener("input", (e) => {
     const el = e.target;
@@ -792,6 +850,7 @@ export function mountDailyLog(root, { onSaveStatus }) {
     let line = T("解便狀況||Bowel movement") + "：" + T(v);
     if (v === "有||Yes") {
       const parts = [];
+      if (g.prevDayBowelMovement__bristol) parts.push(T("大便類型||Stool type") + "：" + T(g.prevDayBowelMovement__bristol));
       if (g.prevDayBowelMovement__shape) parts.push(T("大便性狀||Stool shape") + "：" + T(g.prevDayBowelMovement__shape));
       if (g.prevDayBowelMovement__colour) parts.push(T("大便顏色||Stool colour") + "：" + T(g.prevDayBowelMovement__colour));
       if (parts.length) line += "（" + parts.join("；") + "）";

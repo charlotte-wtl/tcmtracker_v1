@@ -38,8 +38,10 @@ app/web/            the real app (deployed)
 │   ├── health-import.js streams export.zip, finds period records
 │   ├── ids.js           typo-safe user ids with a check character
 │   ├── summary.js       entry → readable lines (preview + Run analysis)
+│   ├── tongue-photo.js  guided tongue photo: checklist, outline, markers
+│   ├── tongue-colour.js white-balanced colour reading vs your own baseline
 │   ├── dates.js         local-day date helpers — never toISOString() for a day
-│   ├── db.js            IndexedDB — the primary store
+│   ├── db.js            IndexedDB — the primary store (days, settings, photos)
 │   ├── ui.js            escaping, bottom sheets
 │   └── i18n.js          T("中文||English")
 └── sw.js           app-shell offline cache (network-first)
