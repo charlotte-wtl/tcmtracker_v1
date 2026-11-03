@@ -103,3 +103,9 @@ export function mergeCycle(local, remote) {
 export function mergeCabinet(local, remote) {
   return { items: mergeRecords(local?.items, remote?.items, "id") };
 }
+
+// The daily-log order is edited as a whole, so the more recent edit wins.
+export function mergeLayout(local, remote) {
+  const l = local?.layout, r = remote?.layout;
+  return { layout: (l?.editedAt || 0) >= (r?.editedAt || 0) ? (l || r || null) : r };
+}

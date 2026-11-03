@@ -3,12 +3,13 @@ import { mountDailyLog } from "./daily-log.js";
 import { mountCalendar } from "./calendar.js";
 import { mountHome } from "./home.js";
 import { mountProfile } from "./profile.js";
+import { mountAnalysis } from "./analysis.js";
 import { openConnect, offlineThisSession } from "./connect.js";
 import { purgeStoredToken, configState, pullRecent, setStatusListener } from "./sync.js";
 
 const NAV_ITEMS = [
   { id: "history", label: "紀錄||History", icon: iconHistory },
-  { id: "chat", label: "聊天||Chat", icon: iconChat },
+  { id: "analysis", label: "分析||Analysis", icon: iconChat },
   { id: "home", label: "首頁||Home", icon: iconHome },
   { id: "log", label: "日誌||Daily log", icon: iconLog },
   { id: "profile", label: "個人||Profile", icon: iconProfile },
@@ -42,7 +43,7 @@ appEl.innerHTML = `
   </div>
 
   <main>
-    <section class="app-screen" id="screen-chat" hidden></section>
+    <section class="app-screen" id="screen-analysis" hidden></section>
     <section class="app-screen" id="screen-log"></section>
     <section class="app-screen" id="screen-home" hidden></section>
     <section class="app-screen" id="screen-profile" hidden></section>
@@ -55,7 +56,7 @@ appEl.innerHTML = `
 `;
 
 const screens = {
-  chat: document.getElementById("screen-chat"),
+  analysis: document.getElementById("screen-analysis"),
   log: document.getElementById("screen-log"),
   home: document.getElementById("screen-home"),
   profile: document.getElementById("screen-profile"),
@@ -80,6 +81,7 @@ function renderNav() {
 let dailyLog = null;
 let calendar = null;
 let home = null;
+let analysis = null;
 
 function showScreen(id) {
   activeScreen = id;
@@ -90,6 +92,7 @@ function showScreen(id) {
   // Re-read on every visit so days logged or edited since show their dots.
   if (id === "history" && calendar) calendar.refresh();
   if (id === "home" && home) home.refresh();
+  if (id === "analysis" && analysis) analysis.refresh();
 }
 
 navInner.addEventListener("click", (e) => {
@@ -146,29 +149,16 @@ function renderSyncStatus(state) {
 
 window.addEventListener("tcm:lang-change", renderChrome);
 
-/* ---------------- Placeholder screens ---------------- */
-
-function renderPlaceholder(el, titlePair, bodyPair) {
-  el.innerHTML = `<div class="placeholder-screen">
-    <h1 class="display">${T(titlePair)}</h1>
-    <p>${T(bodyPair)}</p>
-  </div>`;
-}
-
-function renderChat() {
-  renderPlaceholder(screens.chat, "聊天||Chat",
-    "之後會在這裡與分析結果延伸對話。目前請繼續使用你原本的分析對話。||In-app chat with your analysis results lands in a later phase. For now, keep using your existing analysis conversation.");
-}
 /* ---------------- Boot ---------------- */
 
 function initFromHash() {
-  const id = (window.location.hash || "").replace("#/", "");
+  let id = (window.location.hash || "").replace("#/", "");
+  if (id === "chat") id = "analysis"; // the tab's earlier name
   if (screens[id]) activeScreen = id;
 }
 
 initFromHash();
 renderChrome();
-renderChat();
 Object.keys(screens).forEach((key) => { screens[key].hidden = key !== activeScreen; });
 
 setStatusListener((state, detail) => {
@@ -185,6 +175,12 @@ calendar = mountCalendar(screens.history, {
 });
 
 home = mountHome(screens.home, { onOpenProfile: () => showScreen("profile") });
+
+analysis = mountAnalysis(screens.analysis, { onOpenProfile: () => showScreen("profile") });
+window.addEventListener("tcm:open-analysis", (e) => {
+  showScreen("analysis");
+  analysis.openDay(e.detail.date, { start: !!e.detail.start });
+});
 
 async function connectAndSync(options) {
   const connected = await openConnect(options);

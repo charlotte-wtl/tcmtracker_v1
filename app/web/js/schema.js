@@ -27,7 +27,7 @@ const PULSE_POSITIONS = ["左寸(心)||L-cun (Heart)","左關(肝)||L-guan (Live
 
 export const SCHEMA = {
   sleep: {
-    title: "1. 睡眠||1. Sleep",
+    title: "睡眠||Sleep",
     fields: [
       { id:"onsetEase", type:"single", label:"入睡難易度||Sleep onset ease",
         options:["很快入睡（15分鐘內）||Fell asleep quickly (<15 min)","稍有困難（15–30分）||Somewhat difficult (15–30 min)","輾轉難眠（超過30分）||Tossed and turned (30+ min)","幾乎整夜難眠||Almost no sleep"] },
@@ -46,7 +46,7 @@ export const SCHEMA = {
     ]
   },
   morning: {
-    title: "2. 晨起徵象||2. Morning Signs",
+    title: "晨起徵象||Morning Signs",
     fields: [
       { id:"alertness", type:"single", label:"醒來精神||Waking alertness",
         options:["清爽有精神||Refreshed","尚可||OK","昏沉遲鈍||Groggy","極度疲憊像沒睡||Exhausted, as if didn't sleep"] },
@@ -88,7 +88,7 @@ export const SCHEMA = {
     ]
   },
   tongue: {
-    title: "3. 舌診||3. Tongue Diagnosis",
+    title: "舌診||Tongue Diagnosis",
     fields: [
       // A guided photo plus an on-device colour reading (see tongue-photo.js).
       { id:"photo", type:"photo", label:"舌照||Tongue photo" },
@@ -113,7 +113,7 @@ export const SCHEMA = {
     ]
   },
   general: {
-    title: "4. 全身狀況問診||4. General / Systemic",
+    title: "全身狀況問診||General / Systemic",
     fields: [
       { id:"coldHeat", type:"single", label:"寒熱||Cold/Heat",
         options:["怕冷||Cold-averse","怕熱||Heat-averse","忽冷忽熱||Alternating","無明顯||None notable"] },
@@ -163,7 +163,7 @@ export const SCHEMA = {
     ]
   },
   organs: {
-    title: "5. 肝脾腎相關觀察與壓力||5. Liver / Spleen / Kidney + Stress",
+    title: "肝脾腎相關觀察與壓力||Liver / Spleen / Kidney + Stress",
     fields: [
       { id:"liverSigns", type:"multi", perItemSeverity:true, label:"肝相關徵象||Liver signs",
         options:["無明顯||None","脅肋脹痛||Rib-side pain","頭部兩側或頭頂痛||Temple/vertex headache","容易嘆氣||Frequent sighing","眼睛乾澀或視力模糊||Dry eyes/blurred vision","指甲易脆裂||Brittle nails"] },
@@ -177,7 +177,7 @@ export const SCHEMA = {
     ]
   },
   pulse: {
-    title: "6. 脈診||6. Pulse Diagnosis",
+    title: "脈診||Pulse Diagnosis",
     intro: "脈診是最難自學的一項，不肯定就跳過，或者在「把握程度」選「不確定」。初學只需做兩件事：數脈率，以及比較左右手哪邊較弱。||Pulse reading is the hardest thing to learn on your own. Skip anything you're unsure of, or pick \"Not sure\" under Confidence. As a beginner, just do two things: count the rate, and compare which wrist feels weaker.",
     help: "【怎樣把脈】\n1. 坐好休息5分鐘，手心向上，手腕放在桌上，大約跟心臟同高。\n2. 用另一隻手的食指、中指、無名指，平放在手腕拇指那一邊。\n3. 先找手腕內側那粒突起的骨（拇指那邊）。中指放在骨的內側，那是「關」；食指在它前面、靠手掌，是「寸」；無名指在後面、靠手肘，是「尺」。\n4. 先輕輕放（浮取），再中等力度（中取），最後按到接近骨頭（沉取），感覺哪一層跳得最清楚。\n5. 每次在同一時間把脈，例如起床坐好之後，不要在運動、咖啡或熱水澡之後。||How to take your pulse\n1. Sit and rest for 5 minutes. Palm up, wrist resting on a table at about heart height.\n2. Lay the index, middle and ring fingers of your other hand flat on the thumb side of the wrist.\n3. Find the bony bump on the thumb side of the wrist. Your middle finger sits just inside it: that is guan. The index finger, nearer the palm, is cun. The ring finger, nearer the elbow, is chi.\n4. Rest lightly first (surface), then press medium, then press down almost to the bone (deep). Notice at which depth the beat is clearest.\n5. Check at the same time each day, e.g. sitting up after waking, not after exercise, coffee or a hot shower.",
     fields: [
@@ -203,7 +203,7 @@ export const SCHEMA = {
       ]
   },
   exercise: {
-    title: "7. 運動||7. Exercise",
+    title: "運動||Exercise",
     fields: [
       { id:"type", type:"single", label:"運動類型||Type",
         options:["無運動||None","有氧||Cardio","重量訓練||Strength","散步||Walking","瑜伽伸展||Yoga/stretch","混合||Mixed"] },
@@ -220,7 +220,7 @@ export const SCHEMA = {
     ]
   },
   diet: {
-    title: "8. 飲食||8. Diet",
+    title: "飲食||Diet",
     fields: [
       // Ticked from your cabinet, not from a fixed list of options: you take
       // these with a meal, so they belong here rather than in a section of
@@ -248,7 +248,7 @@ export const SCHEMA = {
   // left/right, forehead, chin map to different organs), so locations are
   // kept apart rather than lumped as "face".
   skin: {
-    title: "9. 皮膚||9. Skin",
+    title: "皮膚||Skin",
     fields: [
       { id:"dryness", type:"slider", label:"皮膚乾燥程度||Skin dryness", min:0, max:5, minLabel:"不乾||Not dry", maxLabel:"非常乾||Very dry" },
       { id:"peeling", type:"yesno", label:"脫皮||Peeling", options:YESNO, allowOther:false,
@@ -273,7 +273,7 @@ export const SCHEMA = {
   // Asked every day except period days, so discharge and one-sided pain can
   // be followed across the whole cycle (the 經間期 is read from these).
   cyclesigns: {
-    title: "10. 婦科觀察||10. Cycle signs",
+    title: "婦科觀察||Cycle signs",
     condition: p => p !== "經期||Period",
     fields: [
       { id:"dischargeTexture", type:"single", label:"分泌物質地||Discharge texture",
@@ -300,7 +300,7 @@ export const SCHEMA = {
     ]
   },
   preperiod: {
-    title: "11. 經前狀態||11. Pre-period",
+    title: "經前狀態||Pre-period",
     condition: p => p === "經前||Pre-period",
     fields: [
       { id:"bellyPain", type:"yesno", label:"小腹不適||Lower belly discomfort", options:YESNO,
@@ -341,7 +341,7 @@ export const SCHEMA = {
     ]
   },
   period: {
-    title: "10. 經期狀態||10. Period",
+    title: "經期狀態||Period",
     condition: p => p === "經期||Period",
     fields: [
       { id:"flow", type:"single", label:"經量||Flow",
@@ -383,7 +383,7 @@ export const SCHEMA = {
   // rebuilt (血海空虛). Discharge, spotting and breast signs are asked in
   // 婦科觀察 above, so they are not repeated here.
   postperiod: {
-    title: "11. 經後狀態||11. Post-period",
+    title: "經後狀態||Post-period",
     condition: p => p === "經後||Post-period",
     fields: [
       { id:"bleedingStatus", type:"single", label:"經血停了嗎||Has the bleeding stopped?", allowOther:false,

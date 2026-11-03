@@ -8,6 +8,15 @@ import { activePeriods, periodEnd, addDays, daysBetween } from "./cycle.js";
 import { todayStr } from "./dates.js";
 
 export const PERIOD_PHASE = "經期||Period";
+export const PRE_PHASE = "經前||Pre-period";
+
+// A day that was 經前 when the period arrived keeps its 經前 answers: both
+// sections stay on that day (see dayPhases in summary.js).
+export function keepEarlierPhase(meta, nextPhase) {
+  if (meta.cyclePhase === PRE_PHASE && nextPhase === PERIOD_PHASE) {
+    meta.extraPhases = [...new Set([...(meta.extraPhases || []), PRE_PHASE])];
+  }
+}
 
 function blankAnswers() {
   const a = { meta: {} };
@@ -24,6 +33,7 @@ async function setLogPhaseToPeriod(date) {
   const answers = entry?.answers || blankAnswers();
   if (!answers.meta) answers.meta = {};
   if (answers.meta.cyclePhase === PERIOD_PHASE) return;
+  keepEarlierPhase(answers.meta, PERIOD_PHASE);
   answers.meta.cyclePhase = PERIOD_PHASE;
   await putEntry({ ...(entry || { date, done: [] }), date, answers, updatedAt: Date.now() });
   queuePush(date);
