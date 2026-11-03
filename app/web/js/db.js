@@ -3,9 +3,12 @@
 // background best-effort mirror on top of it, never a precondition for it.
 
 const DB_NAME = "tcm_tracker";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ENTRIES_STORE = "entries";
 const META_STORE = "meta";
+// Tongue photos, one per day (key "<date>-tongue"). Kept apart from entries
+// so a day's answers stay small and quick to sync.
+const PHOTOS_STORE = "photos";
 
 let dbPromise = null;
 
@@ -20,6 +23,9 @@ export function openDB() {
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE, { keyPath: "key" });
+      }
+      if (!db.objectStoreNames.contains(PHOTOS_STORE)) {
+        db.createObjectStore(PHOTOS_STORE, { keyPath: "key" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -104,9 +110,51 @@ export async function deleteEntry(date) {
 // different user id and has nothing left unsynced.
 export async function clearEntries() {
   const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const req = tx(db, ENTRIES_STORE, "readwrite").clear();
+  const clear = (store) => new Promise((resolve, reject) => {
+    const req = tx(db, store, "readwrite").clear();
     req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+  await clear(ENTRIES_STORE);
+  await clear(PHOTOS_STORE);
+}
+
+/* ---------------- Photos ---------------- */
+
+export function photoKey(date, kind = "tongue") { return `${date}-${kind}`; }
+
+export async function getPhoto(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, PHOTOS_STORE, "readonly").get(key);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function putPhoto(record) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, PHOTOS_STORE, "readwrite").put(record);
+    req.onsuccess = () => resolve(record);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function deletePhoto(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, PHOTOS_STORE, "readwrite").delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getAllPhotos() {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const req = tx(db, PHOTOS_STORE, "readonly").getAll();
+    req.onsuccess = () => resolve(req.result || []);
     req.onerror = () => reject(req.error);
   });
 }
