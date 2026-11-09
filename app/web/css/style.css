@@ -537,3 +537,10 @@ input[type="time"] {
   font-size: 0.68rem; line-height: 22px; text-align: center; white-space: nowrap;
 }
 .tcap-dot.on { background: var(--accent); }
+
+/* habit reasons, most picked first */
+.reason-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.reason-list li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; font-size: 0.84rem; }
+.reason-list .reason-bar { grid-column: 1; height: 6px; border-radius: 3px; background: var(--surface-2); position: relative; overflow: hidden; }
+.reason-list .reason-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--viz-series); border-radius: 3px; }
+.reason-list strong { grid-column: 2; grid-row: 1 / span 2; font-variant-numeric: tabular-nums; }
