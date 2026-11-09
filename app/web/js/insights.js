@@ -30,6 +30,14 @@ function strongest(levels) {
   return graded.length ? Math.max(...graded) : -1;
 }
 
+// The reasons ticked under 習慣 for one symptom, on a day it happened.
+function habitReasons(a, fieldId) {
+  if (a.habits?.[fieldId] !== YES) return [];
+  const picked = a.habits[fieldId + "__reasons"] || [];
+  const other = (a.habits[fieldId + "__otherReason"] || "").trim();
+  return other ? [...picked, other] : picked;
+}
+
 export const SYMPTOMS = [
   { id: "cramps", label: "經痛／小腹痛||Cramps", read: (a) => strongest([
     a.period?.painType?.length ? painScore(a.period.painType__score) : 0,
@@ -47,10 +55,14 @@ export const SYMPTOMS = [
     if (!src) return 0;
     return strongest((src.breastTenderness__sev || []).map(sev3).concat(-1));
   } },
-  { id: "headache", label: "頭痛||Headache", read: (a) => strongest([
+  { id: "headache", label: "頭痛||Headache", reasons: (a) => habitReasons(a, "headache"), read: (a) => strongest([
+    a.habits?.headache === YES ? painScore(a.habits.headache__score) : 0,
     a.preperiod?.headache === YES ? -1 : 0,
     has(a.period?.symptoms, "頭痛||Headache") ? -1 : 0,
     has(a.organs?.liverSigns, "頭部兩側或頭頂痛||Temple/vertex headache") ? itemSev(a.organs, "liverSigns", "頭部兩側或頭頂痛||Temple/vertex headache") : 0,
+  ]) },
+  { id: "yawning", label: "打呵欠／很睏||Yawning / sleepy", reasons: (a) => habitReasons(a, "yawning"), read: (a) => strongest([
+    a.habits?.yawning === YES ? -1 : 0,
   ]) },
   { id: "breakouts", label: "長痘||Breakouts", read: (a) => strongest([
     a.skin?.breakouts === YES ? Math.min(4, Math.max(1, (a.skin.breakouts__location || []).length)) : 0,
@@ -144,5 +156,15 @@ export function symptomInsights(symptom, entries, periods, today) {
   // Which cycle days it tends to land on, across every logged cycle.
   const dayCounts = {};
   withLogs.forEach((c) => c.days.forEach((d) => { if (d.level) dayCounts[d.day] = (dayCounts[d.day] || 0) + 1; }));
-  return { cycles: withLogs, finishedCount: finished.length, average, last, current, dayCounts };
+  // How often each reason was picked on the days the symptom happened.
+  const reasonCounts = {};
+  let reasonDays = 0;
+  if (symptom.reasons) {
+    entries.forEach((e) => {
+      const list = e?.answers ? symptom.reasons(e.answers) : [];
+      if (list.length) reasonDays++;
+      list.forEach((r) => { reasonCounts[r] = (reasonCounts[r] || 0) + 1; });
+    });
+  }
+  return { cycles: withLogs, finishedCount: finished.length, average, last, current, dayCounts, reasonCounts, reasonDays };
 }

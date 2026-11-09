@@ -226,6 +226,14 @@ export function mountAnalysis(root, { onOpenProfile }) {
       ? `<p class="settings-hint">${T("正在下載較早的紀錄||Downloading older days")} ${state.download.done}/${state.download.total}</p>`
       : state2 !== "ready" ? `<p class="settings-hint">${T("尚未連線 GitHub：只用這台裝置上的紀錄。||Not connected to GitHub — using the days on this device only.")}</p>` : "";
 
+    const reasons = Object.entries(ins.reasonCounts || {}).sort((x, y) => y[1] - x[1]);
+    const reasonCard = symptom.reasons ? `<section class="card">
+        <h2 class="card-title">${esc(name)}${T("：最常見的原因||: most common reasons")}</h2>
+        ${reasons.length ? `<p class="settings-hint">${T("在||Picked on ")}${ins.reasonDays}${T("天裡勾選過的原因（「習慣」段落）。|| days in the Habits section.")}</p>
+        <ol class="reason-list">${reasons.slice(0, 8).map(([r, n]) => `<li><span>${esc(r.includes("||") ? T(r) : r)}</span><span class="reason-bar" style="--w:${Math.round((n / reasons[0][1]) * 100)}%"></span><strong>${n}</strong></li>`).join("")}</ol>`
+        : `<p class="settings-hint">${T("還沒有資料。出現這個情況時，在日誌的「習慣」段落勾選可能的原因。||Nothing yet. When it happens, tick the possible reasons in the log's Habits section.")}</p>`}
+      </section>` : "";
+
     let body;
     if (!ins.cycles.length) {
       body = `<p class="settings-hint">${T("還沒有可分析的週期：需要經期紀錄，以及經期之後有記錄的日子。||No cycle to show yet: this needs a recorded period and logged days after it.")}</p>`;
@@ -262,7 +270,7 @@ export function mountAnalysis(root, { onOpenProfile }) {
         </section>
         <div class="btnrow an-ask-insight"><button type="button" class="btn" data-act="ask-insight">${T("問問分析：這個規律代表什麼？||Ask the analysis what this pattern means")}</button></div>`;
     }
-    $("#anBody").innerHTML = chips + dl + body;
+    $("#anBody").innerHTML = chips + dl + reasonCard + body;
     if (!state.downloaded && state2 === "ready" && !state.download) fetchHistory();
   }
 

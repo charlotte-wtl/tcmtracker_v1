@@ -25,6 +25,41 @@ const STOOL_COLOUR = ["正常黃褐||Normal brown","偏黑||Dark","偏綠||Green
 const OLD_STOOL_SHAPE = ["偏硬顆粒狀||Hard/pellet","成形但偏乾||Formed, dry","正常香蕉狀||Normal","偏軟不成形||Soft, unformed","稀溏水便||Watery"];
 const PULSE_POSITIONS = ["左寸(心)||L-cun (Heart)","左關(肝)||L-guan (Liver)","左尺(腎)||L-chi (Kidney)","右寸(肺)||R-cun (Lung)","右關(脾)||R-guan (Spleen)","右尺(腎命門)||R-chi (Kidney/Mingmen)"];
 
+// Habit reasons, from the user's own logs. A caffeine reason is listed both
+// ways: more than usual, and none when she usually has some.
+const HEAD_AREAS = ["前額||Forehead","兩側太陽穴||Temples (sides)","頭頂||Top of head","後腦或後頸||Back of head / neck","眼眶後||Behind the eyes","整個頭||Whole head"];
+const HEADACHE_REASONS = [
+  "咖啡因比平時多||More caffeine than usual",
+  "今天沒有咖啡因（平時有）||No caffeine today (usually have some)",
+  "空腹或早餐太遲才喝咖啡||Coffee on an empty stomach / late breakfast",
+  "整天對著電腦||Long hours at the laptop",
+  "搭車或走路時滑手機||Scrolling the phone on the bus or walking",
+  "睡前或醒來後長時間滑手機||Long phone scrolling before bed or after waking",
+  "肩頸很緊||Tight neck and shoulders",
+  "睡不夠或太晚睡||Too little sleep or a late night",
+  "昨晚喝酒||Alcohol last night",
+  "淋雨、吹風或冷氣太冷||Rain, wind or cold air-con",
+  "喝水太少||Not enough water",
+  "太久沒吃東西||Went too long without food",
+  "壓力或情緒||Stress or emotions",
+  "經前或經期||Pre-period or period",
+];
+const YAWN_REASONS = [
+  "早上吃了甜食或甜飲||Sweet food or drinks earlier",
+  "早餐是麵包、蛋糕等精製澱粉||Bread, pastry or cake for breakfast",
+  "午餐或晚餐吃太飽或太油膩||Big or greasy meal",
+  "咖啡因太多||Too much caffeine",
+  "今天咖啡因比平時少||Less caffeine than usual",
+  "昨晚太晚睡（12點後）||Slept late last night (after midnight)",
+  "第一個鬧鐘後又睡回去||Fell back asleep after the first alarm",
+  "睡前滑手機或處理工作||Phone or work before bed",
+  "晚上被吵醒||Woken up in the night",
+  "昨晚喝酒||Alcohol last night",
+  "整天對著電腦或螢幕||Long hours on screens",
+  "沒有運動或一直坐著||No movement, sitting all day",
+  "經期或經後||Period or just after",
+];
+
 export const SCHEMA = {
   sleep: {
     title: "睡眠||Sleep",
@@ -270,6 +305,32 @@ export const SCHEMA = {
       { id:"notes", type:"text", multiline:true, label:"備註||Notes" }
     ]
   },
+  // Symptom first, then what might have set it off today. The reason lists
+  // come from the user's own logs (Sept–Nov 2026): laptop and phone days,
+  // late or sugary breakfasts with coffee, late nights, falling back asleep
+  // after the first alarm, drinks the night before, rain and cold. Counting
+  // the reasons picked over time (cycle insights) shows which ones recur.
+  habits: {
+    title: "習慣||Habits",
+    intro: "有頭痛或一直打呵欠的話，記下可能的原因。選「可能」就好，不用肯定；時間久了就看得出哪些習慣最常引起不適。||If you had a headache or kept yawning, note what might have set it off. \"Might\" is enough — over time the app shows which habits come up most.",
+    fields: [
+      { id:"headache", type:"yesno", label:"今天有頭痛嗎||Headache today?", options:YESNO, allowOther:false,
+        detailsTrigger:"有||Yes", details:[
+          { id:"where", type:"multi", label:"哪裡痛||Where does it hurt", options:HEAD_AREAS },
+          { id:"feel", type:"multi", label:"感覺||What it feels like", options:["脹痛||Throbbing / pressure","頭重像被包住||Heavy, like wrapped","刺痛||Stabbing","隱隱空痛伴頭暈||Dull, empty, with dizziness","緊箍感||Tight band"] },
+          { id:"score", type:"single", label:"最痛時幾分（0–10）||Worst today (0–10)", options:["1","2","3","4","5","6","7","8","9","10"] },
+          { id:"reasons", type:"multi", label:"可能的原因||Possible reasons", options:HEADACHE_REASONS },
+          { id:"otherReason", type:"text", label:"其他原因||Other reason" }
+        ] },
+      { id:"yawning", type:"yesno", label:"今天一直打呵欠或很睏嗎||Kept yawning or very sleepy today?", options:YESNO, allowOther:false,
+        detailsTrigger:"有||Yes", details:[
+          { id:"when", type:"multi", label:"甚麼時候||When", options:["起床後||After waking","上午||Morning","飯後||After a meal","下午（3–5點）||Afternoon (3–5pm)","傍晚或晚上||Evening"] },
+          { id:"reasons", type:"multi", label:"可能的原因||Possible reasons", options:YAWN_REASONS },
+          { id:"otherReason", type:"text", label:"其他原因||Other reason" }
+        ] },
+      { id:"notes", type:"text", multiline:true, label:"其他習慣觀察||Other habits you noticed" }
+    ]
+  },
   // Asked every day except period days, so discharge and one-sided pain can
   // be followed across the whole cycle (the 經間期 is read from these).
   cyclesigns: {
@@ -423,7 +484,7 @@ export const CYCLE_FIELD = { id:"cyclePhase", type:"single", label:"今天週期
   options:["平日||Regular day","經前||Pre-period","經期||Period","經後||Post-period"] };
 export const MOOD_WORDS = ["很差||Awful","不太好||Not great","普通||Okay","不錯||Good","很好||Great"];
 
-export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet","skin"];
+export const ALWAYS_ON = ["sleep","morning","tongue","general","organs","pulse","exercise","diet","skin","habits"];
 export const CONDITIONAL = ["cyclesigns","preperiod","period","postperiod"];
 // Sections no longer asked, read out only when an old day has answers in them.
 export const RETIRED = ["regularday"];
@@ -433,6 +494,6 @@ export const NONE_MARKERS = ["無明顯||None","無醒轉||None"];
 // Japandi-muted per-section accent tokens — used sparingly (a thin top rule, never a block fill).
 export const SECTION_COLORS = {
   sleep:"mauve", morning:"ochre", tongue:"clay", general:"slate",
-  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose", skin:"ochre",
+  organs:"moss", pulse:"stone-blue", exercise:"moss", diet:"rose", skin:"ochre", habits:"slate",
   cyclesigns:"mauve", regularday:"mauve", preperiod:"rose", period:"clay", postperiod:"moss"
 };
