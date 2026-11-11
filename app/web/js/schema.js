@@ -31,8 +31,8 @@ export const SCHEMA = {
     fields: [
       { id:"onsetEase", type:"single", label:"入睡難易度||Sleep onset ease",
         options:["很快入睡（15分鐘內）||Fell asleep quickly (<15 min)","稍有困難（15–30分）||Somewhat difficult (15–30 min)","輾轉難眠（超過30分）||Tossed and turned (30+ min)","幾乎整夜難眠||Almost no sleep"] },
-      { id:"sleepTime", type:"time", label:"入睡時間||Sleep time" },
-      { id:"wakeTime", type:"time", label:"起床時間||Wake time" },
+      { id:"sleepTime", type:"time", defaultTime:"22:30", label:"入睡時間||Sleep time" },
+      { id:"wakeTime", type:"time", defaultTime:"07:00", label:"起床時間||Wake time" },
       { id:"depth", type:"single", label:"睡眠深淺||Sleep depth",
         options:["深沉安穩||Deep & stable","淺眠易醒||Light, easily woken","多夢紛擾||Restless, many dreams","似睡非睡||Barely asleep","被外界環境吵醒||Woken by external environment"] },
       { id:"nightWaking", type:"multi", label:"半夜醒轉時辰||Middle-of-night waking",
@@ -206,7 +206,15 @@ export const SCHEMA = {
     title: "運動||Exercise",
     fields: [
       { id:"type", type:"single", label:"運動類型||Type",
-        options:["無運動||None","有氧||Cardio","重量訓練||Strength","散步||Walking","瑜伽伸展||Yoga/stretch","混合||Mixed"] },
+        options:["無運動||None","有氧||Cardio","重量訓練||Strength","散步||Walking","瑜伽伸展||Yoga/stretch","混合||Mixed"],
+        // Read off the watch's workout summary; the analysis works the
+        // intensity out from these (see exerciseIntensity in summary.js).
+        detailsTrigger:"any", excludeValues:["無運動||None"], details:[
+          { id:"minutes", type:"number", label:"時長（分鐘）||Duration (minutes)" },
+          { id:"avgHr", type:"number", label:"平均心率（bpm）||Average heart rate (bpm)" },
+          { id:"minHr", type:"number", label:"最低心率（bpm）||Lowest heart rate (bpm)" },
+          { id:"maxHr", type:"number", label:"最高心率（bpm）||Highest heart rate (bpm)" }
+        ] },
       { id:"intensity", type:"single", label:"運動強度自評||Self-rated intensity",
         options:["輕鬆||Light","適中||Moderate","吃力||Hard","過度||Excessive"] },
       { id:"postResponse", type:"multi", label:"運動後身體反應||Post-exercise response",
@@ -230,7 +238,7 @@ export const SCHEMA = {
       // morning's puffiness, stool, tongue and energy, they give the
       // one-day lag the analysis looks for.
       { id:"yesterdayExposures", type:"multi", label:"昨天有沒有以下情況（可多選）||Yesterday, did you have any of these? (pick all)", allowOther:false,
-        options:["都沒有||None of these","炸物||Fried food","辣||Spicy food","咖喱或重香料||Curry or heavy spices","鹹零食（紫菜、薯片等）||Salty snacks (seaweed, chips)","生冷（沙律、凍飲、大量水果）||Raw or cold food (salad, iced drinks, lots of fruit)","甜品或甜飲||Dessert or sweet drinks","奶類（牛奶、芝士、乳酪）||Dairy (milk, cheese, yoghurt)","酒精||Alcohol","哭過或吵架||Cried or argued","晚上處理工作或稅務||Worked or did admin late"] },
+        options:["都沒有||None of these","炸物||Fried food","辣||Spicy food","咖喱或重香料||Curry or heavy spices","薯片||Chips","紫菜零食||Seaweed snacks","生冷（沙律、凍飲、大量水果）||Raw or cold food (salad, iced drinks, lots of fruit)","雪糕||Ice cream","乳酪||Yoghurt","蛋糕或甜點（雪櫃凍）||Cake or pastry (from the fridge)","酥皮或甜點（室溫）||Pastry (room temperature)","甜飲||Sweet drinks","奶類（牛奶、芝士）||Dairy (milk, cheese)","酒精||Alcohol","哭過或吵架||Cried or argued","晚上處理工作或稅務||Worked or did admin late"] },
       { id:"yesterdayCaffeine", type:"single", label:"昨天的咖啡因||Caffeine yesterday", allowOther:false,
         options:["沒有||None","茶1至2杯||1–2 cups of tea","咖啡1杯||1 coffee","咖啡2杯或以上，或咖啡加茶||2+ coffees, or coffee and tea"] },
       { id:"morning", type:"text", label:"早餐||Morning" },

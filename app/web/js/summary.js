@@ -89,6 +89,22 @@ function photoText(v) {
   return `${T(v.words || "")}（${cond}）`;
 }
 
+// A rough intensity from the watch's average heart rate, using adult bands
+// (no age is stored, so these aren't personal heart-rate zones).
+export function exerciseIntensity(ans = {}) {
+  const avg = Number(ans.type__avgHr);
+  if (!avg) return "";
+  const band = avg < 100 ? "輕||light" : avg < 130 ? "中等||moderate" : avg < 155 ? "高||hard" : "很高||very hard";
+  const min = Number(ans.type__minHr), max = Number(ans.type__maxHr), mins = Number(ans.type__minutes);
+  let text = T("強度約||Intensity about ") + T(band);
+  const parts = [];
+  if (mins) parts.push(mins + T("分鐘|| min"));
+  parts.push(T("平均||avg ") + avg + " bpm");
+  if (min && max) parts.push(T("範圍||range ") + min + "–" + max);
+  text += `（${parts.join("，")}）`;
+  return text;
+}
+
 // One section's answered fields as [{ label, text }].
 export function sectionLines(secId, ans = {}, all = {}) {
   const lines = [];
@@ -118,6 +134,10 @@ export function sectionLines(secId, ans = {}, all = {}) {
     if (other) text += (hasValue ? "；" : "") + "其他：" + other;
     lines.push({ label: T(f.label), text });
   });
+  if (secId === "exercise") {
+    const t = exerciseIntensity(ans);
+    if (t) lines.push({ label: T("由心率推算||From heart rate"), text: t });
+  }
   return lines;
 }
 

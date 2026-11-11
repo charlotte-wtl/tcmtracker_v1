@@ -225,7 +225,8 @@ export function mountDailyLog(root, { onSaveStatus }) {
   function renderTime(secId, field, value) {
     const v = value || "";
     const clock = /^\d{2}:\d{2}$/.test(v);
-    return `<input type="time" data-sec="${secId}" data-field="${field.id}" data-type="text" value="${clock ? escAttr(v) : ""}">`
+    const def = field.defaultTime ? ` data-default="${field.defaultTime}"` : "";
+    return `<input type="time" data-sec="${secId}" data-field="${field.id}" data-type="text"${def} value="${clock ? escAttr(v) : ""}">`
       + (v && !clock ? `<p class="settings-hint">${T("原本記錄：||Previously recorded: ")}${escHtml(v)}</p>` : "");
   }
 
@@ -773,6 +774,25 @@ export function mountDailyLog(root, { onSaveStatus }) {
     if (!d.matches || !d.matches("details.help")) return;
     if (d.open) openHelps.add(d.dataset.help); else openHelps.delete(d.dataset.help);
   }, true);
+
+  // An empty time picker opens at the current time; bedtime should open at
+  // night (pm) and waking in the morning (am). The starting time is filled in
+  // as the picker opens, and kept when it closes, as a time you chose.
+  $("#sections").addEventListener("focusin", (e) => {
+    const el = e.target;
+    if (el.type !== "time" || !el.dataset.default || el.value) return;
+    el.value = el.dataset.default;
+    el.dataset.prefilled = "1";
+  });
+  $("#sections").addEventListener("focusout", (e) => {
+    const el = e.target;
+    if (el.type !== "time" || !el.dataset.prefilled) return;
+    delete el.dataset.prefilled;
+    if (el.value && !fieldValue(el.dataset.sec, el.dataset.field)) {
+      setFieldValue(el.dataset.sec, el.dataset.field, el.value);
+      scheduleAutoSave();
+    }
+  });
 
   $("#sections").addEventListener("input", (e) => {
     const el = e.target;
